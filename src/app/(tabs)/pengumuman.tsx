@@ -1,24 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Platform, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
-import { Announcement, AnnouncementCard } from '@/components/announcement-card';
+import { type Announcement, AnnouncementCard } from '@/components/announcement-card';
+import { AppText } from '@/components/ui/app-text';
+import { ConfirmSheet } from '@/components/ui/confirm-sheet';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
+import { InlineBanner } from '@/components/ui/inline-banner';
 import { Screen } from '@/components/ui/screen';
 import { SkeletonCard } from '@/components/ui/skeleton';
 import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { useAppTheme } from '@/hooks/use-app-theme';
 import { useAuth } from '@/lib/auth';
+import { friendlyError, type FriendlyError } from '@/lib/errors';
 import { supabase } from '@/lib/supabase';
 
 export default function PengumumanScreen() {
-  const theme = useTheme();
+  const { colors } = useAppTheme();
   const { profile } = useAuth();
+
   const [items, setItems] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const mounted = useRef(true);
+  const [error, setError] = useState<unknown>(null);
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Announcement | null>(null);
+  const [deleteFailure, setDeleteFailure] = useState<FriendlyError | null>(null);
+
+  const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -27,13 +38,25 @@ export default function PengumumanScreen() {
   }, []);
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase
+    const { data, error: loadError } = await supabase
       .from('announcements')
       .select('*, profiles(full_name)')
       .order('created_at', { ascending: false })
       .limit(50);
+
     if (!mounted.current) return;
-    if (!error) setItems((data ?? []) as Announcement[]);
+
+    // Kode lama memakai `if (!error) setItems(...)` lalu `setLoading(false)`
+    // tanpa syarat, jadi gangguan jaringan tampil sebagai "Belum ada
+    // pengumuman" — warga tidak tahu bahwa datanya gagal dimuat.
+    if (loadError) {
+      setError(loadError);
+      setLoading(false);
+      return;
+    }
+
+    setError(null);
+    setItems((data ?? []) as Announcement[]);
     setLoading(false);
   }, []);
 
@@ -61,18 +84,19 @@ export default function PengumumanScreen() {
                 ...prev.filter((a) => a.id !== row.id),
               ]);
             });
-        }
+        },
       )
       .on(
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'announcements' },
         (payload) => {
           const old = payload.old as Announcement;
-          if (!mounted.current) return;
-          if (old?.id) setItems((prev) => prev.filter((a) => a.id !== old.id));
-        }
+          if (!mounted.current || !old?.id) return;
+          setItems((prev) => prev.filter((a) => a.id !== old.id));
+        },
       )
       .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
     };
@@ -84,88 +108,128 @@ export default function PengumumanScreen() {
     setRefreshing(false);
   }
 
-  async function doDelete(item: Announcement) {
-    setDeletingId(item.id);
-    try {
-      const { error } = await supabase.from('announcements').delete().eq('id', item.id);
-      if (error) throw error;
-      setItems((prev) => prev.filter((a) => a.id !== item.id));
-    } catch (e: any) {
-      Alert.alert('Gagal menghapus', e?.message ?? 'Terjadi kesalahan saat menghapus pengumuman.');
-    } finally {
-      if (mounted.current) setDeletingId(null);
-    }
+  function retry() {
+    setLoading(true);
+    setError(null);
+    load();
   }
 
-  function onDelete(item: Announcement) {
-    const message = `"${item.title}" akan dihapus permanen. Lanjutkan?`;
-    if (Platform.OS === 'web') {
-      const ok = typeof window !== 'undefined' ? window.confirm(`Hapus pengumuman\n${message}`) : false;
-      if (ok) doDelete(item);
+  async function confirmDelete() {
+    const item = pendingDelete;
+    if (!item) return;
+
+    setPendingDelete(null);
+    setDeletingId(item.id);
+    setDeleteFailure(null);
+
+    const { error: deleteError } = await supabase
+      .from('announcements')
+      .delete()
+      .eq('id', item.id);
+
+    if (!mounted.current) return;
+    setDeletingId(null);
+
+    if (deleteError) {
+      setDeleteFailure(friendlyError(deleteError, 'deleteAnnouncement'));
       return;
     }
-    Alert.alert('Hapus pengumuman', message, [
-      { text: 'Batal', style: 'cancel' },
-      { text: 'Hapus', style: 'destructive', onPress: () => doDelete(item) },
-    ]);
+    setItems((prev) => prev.filter((a) => a.id !== item.id));
   }
 
-  const sorted = [...items].sort((a, b) => Number(b.is_important) - Number(a.is_important));
+  // Yang penting selalu di atas — itu urutan yang benar untuk pengumuman desa.
+  const sorted = [...items].sort(
+    (a, b) => Number(b.is_important) - Number(a.is_important),
+  );
   const isAdmin = profile?.role === 'admin';
+  const importantCount = items.filter((a) => a.is_important).length;
 
   return (
     <Screen
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.primaryText}
+          colors={[colors.primaryText]}
+        />
       }>
-      <Text style={[styles.pageTitle, { color: theme.text }]}>Pengumuman Desa</Text>
-      <Text style={[styles.pageSub, { color: theme.textSecondary }]}>
-        Informasi resmi dari perangkat Desa Segoropuro.
-      </Text>
+      <Animated.View entering={FadeIn.duration(320)} style={styles.header}>
+        <AppText variant="title" color="text" heading>
+          Pengumuman Desa
+        </AppText>
+        <AppText variant="body" color="textSecondary">
+          Informasi resmi dari perangkat Desa Segoropuro.
+          {importantCount > 0
+            ? ` Ada ${importantCount} pengumuman penting.`
+            : ''}
+        </AppText>
+      </Animated.View>
 
-      {loading ? (
+      {deleteFailure ? (
+        <InlineBanner
+          tone="error"
+          message={deleteFailure.message}
+          onDismiss={() => setDeleteFailure(null)}
+        />
+      ) : null}
+
+      {error ? (
+        <ErrorState error={error} onRetry={retry} />
+      ) : loading ? (
         <View style={styles.list}>
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
         </View>
       ) : sorted.length === 0 ? (
-        <EmptyState
-          icon="megaphone-outline"
-          title="Belum ada pengumuman"
-          description="Pengumuman resmi desa akan tampil di sini."
-        />
+        <Animated.View entering={FadeInDown.duration(320)}>
+          <EmptyState
+            icon="megaphone-outline"
+            title="Belum ada pengumuman"
+            description="Kalau perangkat desa mengirim informasi resmi, Anda akan melihatnya di sini."
+          />
+        </Animated.View>
       ) : (
         <View style={styles.list}>
-          {sorted.map((a) => (
-            <AnnouncementCard
+          {sorted.map((a, i) => (
+            <Animated.View
               key={a.id}
-              announcement={a}
-              onDelete={isAdmin ? () => onDelete(a) : undefined}
-              deleting={deletingId === a.id}
-            />
+              entering={i < 5 ? FadeInDown.delay(60 + i * 45).duration(340) : undefined}>
+              <AnnouncementCard
+                announcement={a}
+                onDelete={isAdmin ? () => setPendingDelete(a) : undefined}
+                deleting={deletingId === a.id}
+              />
+            </Animated.View>
           ))}
         </View>
       )}
+
+      <ConfirmSheet
+        visible={!!pendingDelete}
+        title="Hapus pengumuman ini?"
+        message={
+          pendingDelete
+            ? `"${pendingDelete.title}" akan hilang dari daftar dan tidak bisa dikembalikan.`
+            : ''
+        }
+        confirmLabel="Ya, Hapus"
+        cancelLabel="Jangan Hapus"
+        destructive
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  pageTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    marginTop: Spacing.two,
-  },
-  pageSub: {
-    fontSize: 14,
+  header: {
+    gap: Spacing.xs,
+    marginTop: Spacing.xs,
   },
   list: {
-    gap: Spacing.two + 2,
-  },
-  emptyText: {
-    fontSize: 14,
-    textAlign: 'center',
-    paddingVertical: Spacing.four,
+    gap: Spacing.md,
   },
 });

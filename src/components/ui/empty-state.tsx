@@ -1,58 +1,87 @@
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { AppText } from '@/components/ui/app-text';
+import { Button } from '@/components/ui/button';
+import { Surface } from '@/components/ui/surface';
 import { Radius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { useAppTheme } from '@/hooks/use-app-theme';
 
 type Props = {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   description?: string;
+  /** Warna khusus untuk ikon. Bawaannya hijau. */
   accent?: string;
+  /** Tombol aksi, supaya keadaan kosong tidak jadi jalan buntu. */
+  action?: { label: string; onPress: () => void };
 };
 
-export function EmptyState({ icon, title, description, accent }: Props) {
-  const theme = useTheme();
-  const color = accent ?? theme.primary;
+/**
+ * Keadaan kosong.
+ *
+ * Perubahan: teks judul dan keterangan dinaikkan (dulu 16.5 dan 13.5), ikon
+ * diperbesar, dan ditambah tombol aksi opsional — supaya warga yang sampai di
+ * layar kosong punya langkah berikutnya, bukan sekadar diberi tahu bahwa
+ * tidak ada apa-apa.
+ */
+export function EmptyState({ icon, title, description, accent, action }: Props) {
+  const { colors } = useAppTheme();
+  const color = accent ?? colors.primaryText;
 
   return (
-    <View style={[styles.box, { backgroundColor: theme.card, borderColor: theme.border }]}>
-      <View style={[styles.iconBox, { backgroundColor: theme.primarySoft }]}>
-        <Ionicons name={icon} size={30} color={color} />
+    <Surface tone="card" radius={Radius.lg} style={styles.box}>
+      <View
+        style={[
+          styles.iconBox,
+          { backgroundColor: accent ? `${accent}1F` : colors.primarySoft },
+        ]}>
+        <Ionicons name={icon} size={34} color={color} />
       </View>
-      <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+
+      <AppText variant="heading" color="text" align="center" heading>
+        {title}
+      </AppText>
+
       {description ? (
-        <Text style={[styles.desc, { color: theme.textSecondary }]}>{description}</Text>
+        <AppText variant="secondary" color="textSecondary" align="center" style={styles.desc}>
+          {description}
+        </AppText>
       ) : null}
-    </View>
+
+      {action ? (
+        <Button
+          title={action.label}
+          onPress={action.onPress}
+          variant="outline"
+          style={styles.action}
+        />
+      ) : null}
+    </Surface>
   );
 }
 
 const styles = StyleSheet.create({
   box: {
-    borderRadius: Radius.lg,
-    borderWidth: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.five,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.two,
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
   },
   iconBox: {
-    width: 60,
-    height: 60,
-    borderRadius: Radius.full,
+    width: 72,
+    height: 72,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Spacing.one,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
+    marginBottom: Spacing.xs,
   },
   desc: {
-    fontSize: 13,
-    textAlign: 'center',
+    maxWidth: 320,
+  },
+  action: {
+    marginTop: Spacing.md,
+    minWidth: 200,
   },
 });

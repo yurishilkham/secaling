@@ -1,33 +1,52 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
-import { Announcement, AnnouncementCard } from '@/components/announcement-card';
-import { Report, ReportCard } from '@/components/report-card';
+import { type Announcement, AnnouncementCard } from '@/components/announcement-card';
+import { HomeHero } from '@/components/home-hero';
+import { type Report, ReportCard } from '@/components/report-card';
+import { AppText } from '@/components/ui/app-text';
+import {
+  CategoryFilterRow,
+  type CategoryFilterValue,
+} from '@/components/ui/category-filter-row';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
+import { InlineBanner } from '@/components/ui/inline-banner';
 import { Screen } from '@/components/ui/screen';
 import { SectionHeader } from '@/components/ui/section-header';
 import { SkeletonCard } from '@/components/ui/skeleton';
-import { CATEGORIES, CATEGORY_KEYS, CategoryKey } from '@/constants/categories';
-import { Radius, Shadows, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { CATEGORY_KEYS } from '@/constants/categories';
+import { Spacing } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/use-app-theme';
+import { useConfirmations } from '@/hooks/use-confirmations';
+import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
 const HOME_CHANNEL = 'home-realtime';
-type CategoryFilter = CategoryKey | 'semua';
 
 export default function HomeScreen() {
-  const theme = useTheme();
+  const { colors } = useAppTheme();
   const router = useRouter();
+  const { session } = useAuth();
+
   const [reports, setReports] = useState<Report[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<CategoryFilter>('semua');
-  const mounted = useRef(true);
+  /**
+   * Keadaan gagal yang sebelumnya tidak ada.
+   *
+   * Kode lama menulis `if (!error) setReports(...)` lalu `setLoading(false)`
+   * tanpa syarat, jadi kegagalan jaringan tampil sebagai "Desa dalam keadaan
+   * aman" — pesan yang justru menenangkan padahal datanya gagal dimuat.
+   */
+  const [error, setError] = useState<unknown>(null);
+  const [filter, setFilter] = useState<CategoryFilterValue>('semua');
 
+  const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -41,7 +60,7 @@ export default function HomeScreen() {
         .from('reports')
         .select('*, profiles(full_name)')
         .order('created_at', { ascending: false })
-        .limit(20),
+        .limit(30),
       supabase
         .from('announcements')
         .select('*, profiles(full_name)')
@@ -49,11 +68,21 @@ export default function HomeScreen() {
         .limit(10),
     ]);
 
-    if (mounted.current) {
-      if (!reportRes.error) setReports((reportRes.data ?? []) as Report[]);
-      if (!annRes.error) setAnnouncements((annRes.data ?? []) as Announcement[]);
+    if (!mounted.current) return;
+
+    // Kalau keduanya gagal, itu masalah jaringan — tampilkan keadaan gagal.
+    // Kalau cuma satu yang gagal, tampilkan yang berhasil saja daripada
+    // menutup seluruh layar.
+    if (reportRes.error && annRes.error) {
+      setError(reportRes.error);
       setLoading(false);
+      return;
     }
+
+    setError(null);
+    if (!reportRes.error) setReports((reportRes.data ?? []) as Report[]);
+    if (!annRes.error) setAnnouncements((annRes.data ?? []) as Announcement[]);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -63,30 +92,30 @@ export default function HomeScreen() {
   useEffect(() => {
     const channel = supabase
       .channel(HOME_CHANNEL)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'reports' },
-        (payload) => {
-          const row = payload.new as Report;
-          supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', row.reporter_id)
-            .maybeSingle()
-            .then(({ data }) => {
-              if (!mounted.current) return;
-              setReports((prev) => [
-                { ...row, profiles: data ?? null },
-                ...prev.filter((r) => r.id !== row.id),
-              ]);
-            });
-        }
-      )
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reports' }, (payload) => {
+        const row = payload.new as Report;
+        supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', row.reporter_id)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (!mounted.current) return;
+            setReports((prev) => [
+              { ...row, profiles: data ?? null },
+              ...prev.filter((r) => r.id !== row.id),
+            ]);
+          });
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'reports' }, (payload) => {
+        const old = payload.old as Report;
+        if (!mounted.current || !old?.id) return;
+        setReports((prev) => prev.filter((r) => r.id !== old.id));
+      })
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'announcements' },
         (payload) => {
-          if (!mounted.current) return;
           const row = payload.new as Announcement;
           supabase
             .from('profiles')
@@ -100,7 +129,7 @@ export default function HomeScreen() {
                 ...prev.filter((a) => a.id !== row.id),
               ]);
             });
-        }
+        },
       )
       .subscribe();
 
@@ -115,300 +144,172 @@ export default function HomeScreen() {
     setRefreshing(false);
   }
 
+  function retry() {
+    setLoading(true);
+    setError(null);
+    load();
+  }
+
   const filteredReports =
     filter === 'semua' ? reports : reports.filter((r) => r.category === filter);
 
+  // Jumlah pembenaran diambil untuk SELURUH laporan yang dimuat, bukan hanya
+  // yang sedang tampil setelah disaring. Kalau hanya yang tersaring, mengganti
+  // penyaring akan memicu permintaan jaringan baru setiap kali.
+  const {
+    counts,
+    mine,
+    toggle,
+    pendingId,
+    confirmationFailure,
+    clearConfirmationFailure,
+  } = useConfirmations(
+    reports.map((r) => r.id),
+    session?.user.id ?? null,
+  );
+
+  // Jumlah per kategori supaya warga tahu chip mana yang berisi sebelum ditekan.
+  const categoryCounts: Partial<Record<CategoryFilterValue, number>> = {
+    semua: reports.length,
+  };
+  for (const key of CATEGORY_KEYS) {
+    categoryCounts[key] = reports.filter((r) => r.category === key).length;
+  }
+
   return (
     <Screen
-      scroll
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.primary} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.primaryText}
+          colors={[colors.primaryText]}
+        />
       }>
-      <LinearGradient
-        colors={[theme.primary, theme.primaryDark]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.hero}>
-        <View style={styles.heroTop}>
-          <View style={styles.heroIcon}>
-            <Ionicons name="shield-checkmark" size={26} color={theme.onPrimary} />
-          </View>
-          <View style={styles.heroText}>
-            <Text style={[styles.heroTitle, { color: theme.onPrimary }]}>Secaling</Text>
-            <Text style={[styles.heroSub, { color: theme.onPrimary }]}>Keamanan Desa Segoropuro</Text>
-          </View>
-          <View style={styles.liveBadge}>
-            <View style={styles.liveDot} />
-            <Text style={[styles.liveText, { color: theme.onPrimary }]}>LIVE</Text>
-          </View>
-        </View>
+      <Animated.View entering={FadeIn.duration(360)}>
+        <HomeHero />
+      </Animated.View>
 
-        <Text style={[styles.heroDesc, { color: theme.onPrimary }]}>
-          Pantau keamanan desa secara real-time dan lapor kejadian mencurigakan.
-        </Text>
-
-        <Pressable
-          onPress={() => router.push('/lapor')}
-          style={({ pressed }) => [
-            styles.cta,
-            { transform: [{ scale: pressed ? 0.97 : 1 }] },
-          ]}>
-          <Ionicons name="add-circle" size={20} color={theme.primary} />
-          <Text style={styles.ctaText}>Lapor Kejadian</Text>
-        </Pressable>
-      </LinearGradient>
-
-      <View style={styles.statsRow}>
-        <View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Ionicons name="warning" size={18} color={theme.danger} />
-          <Text style={[styles.statValue, { color: theme.text }]}>{reports.length}</Text>
-          <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Peringatan</Text>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Ionicons name="megaphone" size={18} color={theme.primary} />
-          <Text style={[styles.statValue, { color: theme.text }]}>{announcements.length}</Text>
-          <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Pengumuman</Text>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Ionicons name="people" size={18} color={theme.success} />
-          <Text style={[styles.statValue, { color: theme.text }]}>24/7</Text>
-          <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Siaga</Text>
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <SectionHeader
-          icon={<Ionicons name="warning" size={18} color={theme.danger} />}
-          title="Peringatan Terbaru"
-          accent={theme.danger}
-          action={{ label: 'Lihat semua', onPress: () => router.push('/pengumuman') }}
+      {confirmationFailure ? (
+        <InlineBanner
+          tone="error"
+          message={confirmationFailure.message}
+          onDismiss={clearConfirmationFailure}
         />
+      ) : null}
 
-        {!loading ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterRow}>
-            <Pressable
-              onPress={() => setFilter('semua')}
-              style={[
-                styles.filterChip,
-                {
-                  backgroundColor: filter === 'semua' ? theme.primary : theme.card,
-                  borderColor: filter === 'semua' ? theme.primary : theme.border,
-                },
-              ]}>
-              <Text
-                style={[
-                  styles.filterChipText,
-                  { color: filter === 'semua' ? theme.onPrimary : theme.textSecondary },
-                ]}>
-                Semua
-              </Text>
-            </Pressable>
-            {CATEGORY_KEYS.map((key) => {
-              const cat = CATEGORIES[key];
-              const active = filter === key;
-              return (
-                <Pressable
-                  key={key}
-                  onPress={() => setFilter(key)}
-                  style={[
-                    styles.filterChip,
-                    {
-                      backgroundColor: active ? cat.color : theme.card,
-                      borderColor: active ? cat.color : theme.border,
-                    },
-                  ]}>
-                  <Ionicons
-                    name={cat.icon}
-                    size={13}
-                    color={active ? '#FFFFFF' : cat.color}
+      {error ? (
+        <ErrorState error={error} onRetry={retry} />
+      ) : (
+        <>
+          <Animated.View entering={FadeInDown.delay(80).duration(360)} style={styles.section}>
+            <SectionHeader
+              icon={<Ionicons name="warning" size={22} color={colors.danger} />}
+              title="Kejadian Terbaru"
+              accent={colors.danger}
+            />
+
+            {loading ? (
+              <View style={styles.list}>
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+              </View>
+            ) : (
+              <>
+                <CategoryFilterRow value={filter} onChange={setFilter} counts={categoryCounts} />
+
+                {filteredReports.length === 0 ? (
+                  <EmptyState
+                    icon="shield-checkmark-outline"
+                    title={filter === 'semua' ? 'Desa sedang aman' : 'Belum ada laporan'}
+                    description={
+                      filter === 'semua'
+                        ? 'Belum ada kejadian yang dilaporkan. Kalau Anda melihat sesuatu, jangan ragu melapor.'
+                        : 'Belum ada laporan untuk jenis kejadian ini. Coba pilih jenis lain di atas.'
+                    }
+                    action={
+                      filter === 'semua'
+                        ? { label: 'Lapor Kejadian', onPress: () => router.push('/lapor') }
+                        : { label: 'Lihat Semua', onPress: () => setFilter('semua') }
+                    }
                   />
-                  <Text
-                    style={[
-                      styles.filterChipText,
-                      { color: active ? '#FFFFFF' : theme.textSecondary },
-                    ]}>
-                    {cat.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        ) : null}
+                ) : (
+                  <View style={styles.list}>
+                    {filteredReports.map((r, i) => (
+                      <Animated.View
+                        key={r.id}
+                        entering={i < 4 ? FadeInDown.delay(120 + i * 50).duration(340) : undefined}>
+                        <ReportCard
+                          report={r}
+                          confirmCount={counts[r.id] ?? 0}
+                          confirmedByMe={mine.has(r.id)}
+                          onConfirm={() => toggle(r.id)}
+                          confirmLoading={pendingId === r.id}
+                          confirmDisabled={!session}
+                        />
+                      </Animated.View>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+          </Animated.View>
 
-        {loading ? (
-          <View style={styles.skeletonList}>
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-          </View>
-        ) : filteredReports.length === 0 ? (
-          <EmptyState
-            icon="shield-outline"
-            title={filter === 'semua' ? 'Desa dalam keadaan aman' : 'Tidak ada laporan'}
-            description={
-              filter === 'semua'
-                ? 'Belum ada laporan. Jaga keamanan bersama!'
-                : 'Belum ada laporan untuk kategori ini.'
-            }
-          />
-        ) : (
-          filteredReports.map((r) => <ReportCard key={r.id} report={r} />)
-        )}
-      </View>
+          <Animated.View entering={FadeInDown.delay(140).duration(360)} style={styles.section}>
+            <SectionHeader
+              icon={<Ionicons name="megaphone" size={22} color={colors.primaryText} />}
+              title="Pengumuman Desa"
+              action={
+                announcements.length > 0
+                  ? { label: 'Semua', onPress: () => router.push('/pengumuman') }
+                  : undefined
+              }
+            />
 
-      <View style={styles.section}>
-        <SectionHeader
-          icon={<Ionicons name="megaphone" size={18} color={theme.primary} />}
-          title="Pengumuman Desa"
-          action={{ label: 'Lihat semua', onPress: () => router.push('/pengumuman') }}
-        />
+            {loading ? (
+              <View style={styles.list}>
+                <SkeletonCard />
+                <SkeletonCard />
+              </View>
+            ) : announcements.length === 0 ? (
+              <EmptyState
+                icon="megaphone-outline"
+                title="Belum ada pengumuman"
+                description="Informasi resmi dari perangkat desa akan muncul di sini."
+              />
+            ) : (
+              <View style={styles.list}>
+                {announcements.slice(0, 3).map((a, i) => (
+                  <Animated.View
+                    key={a.id}
+                    entering={i < 3 ? FadeInDown.delay(180 + i * 50).duration(340) : undefined}>
+                    <AnnouncementCard announcement={a} />
+                  </Animated.View>
+                ))}
 
-        {loading ? (
-          <View style={styles.skeletonList}>
-            <SkeletonCard />
-            <SkeletonCard />
-          </View>
-        ) : announcements.length === 0 ? (
-          <EmptyState
-            icon="megaphone-outline"
-            title="Belum ada pengumuman"
-            description="Pengumuman resmi desa akan tampil di sini."
-          />
-        ) : (
-          announcements.map((a) => <AnnouncementCard key={a.id} announcement={a} />)
-        )}
-      </View>
+                {announcements.length > 3 ? (
+                  <AppText variant="caption" color="textMuted" align="center" style={styles.more}>
+                    {`Masih ada ${announcements.length - 3} pengumuman lain`}
+                  </AppText>
+                ) : null}
+              </View>
+            )}
+          </Animated.View>
+        </>
+      )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: {
-    borderRadius: Radius.xl,
-    padding: Spacing.four,
-    gap: Spacing.three,
-    ...Shadows.lg,
-  },
-  heroTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-  },
-  heroIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: Radius.full,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-  },
-  heroText: {
-    flex: 1,
-    gap: 2,
-  },
-  heroTitle: {
-    fontSize: 26,
-    fontWeight: '900',
-  },
-  heroSub: {
-    fontSize: 13,
-    fontWeight: '600',
-    opacity: 0.9,
-  },
-  liveBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    paddingHorizontal: Spacing.two,
-    paddingVertical: 5,
-    borderRadius: Radius.full,
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#4ADE80',
-  },
-  liveText: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  heroDesc: {
-    fontSize: 14,
-    lineHeight: 20,
-    opacity: 0.92,
-  },
-  cta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.two,
-    backgroundColor: '#FFFFFF',
-    borderRadius: Radius.md,
-    paddingVertical: Spacing.three,
-    marginTop: Spacing.one,
-  },
-  ctaText: {
-    color: '#047857',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    marginTop: Spacing.three,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    alignItems: 'center',
-    paddingVertical: Spacing.three,
-    gap: 3,
-    ...Shadows.sm,
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  statLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
   section: {
-    gap: Spacing.two + 2,
-    marginTop: Spacing.four,
+    gap: Spacing.md,
   },
-  filterRow: {
-    gap: Spacing.two,
-    paddingVertical: Spacing.one,
+  list: {
+    gap: Spacing.md,
   },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: Radius.full,
-    borderWidth: 1.5,
-  },
-  filterChipText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-  },
-  skeletonList: {
-    gap: Spacing.two + 2,
-  },
-  loadingText: {
-    fontSize: 14,
-    textAlign: 'center',
-    paddingVertical: Spacing.four,
+  more: {
+    paddingTop: Spacing.xs,
   },
 });

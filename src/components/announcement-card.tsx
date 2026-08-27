@@ -1,9 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
-import { Radius, Shadows, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { AppText } from '@/components/ui/app-text';
+import { IconButton } from '@/components/ui/icon-button';
+import { Surface } from '@/components/ui/surface';
+import { Radius, Spacing, Touch } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/use-app-theme';
 import { timeAgo } from '@/lib/format';
+import { buildAnnouncementMessage, shareToWhatsApp } from '@/lib/share';
 
 export type Announcement = {
   id: string;
@@ -24,136 +28,142 @@ export function AnnouncementCard({
   onDelete?: () => void;
   deleting?: boolean;
 }) {
-  const theme = useTheme();
+  const { colors } = useAppTheme();
   const important = announcement.is_important;
 
+  const accent = important ? colors.danger : colors.primaryText;
+  const accentSoft = important ? colors.dangerSoft : colors.primarySoft;
+
+  function share() {
+    shareToWhatsApp(
+      buildAnnouncementMessage({
+        title: announcement.title,
+        body: announcement.body,
+        isImportant: important,
+        createdAt: announcement.created_at,
+        authorName: announcement.profiles?.full_name ?? null,
+      }),
+    );
+  }
+
   return (
-    <View
+    <Surface
+      tone="card"
+      radius={Radius.lg}
+      // Pengumuman penting ditandai TIGA cara sekaligus: garis tebal di kiri,
+      // ikon berbeda, dan tulisan "PENTING". Tidak boleh hanya warna, karena
+      // pembaca yang buta warna harus tetap bisa membedakannya.
+      emphasis={important}
       style={[
         styles.card,
-        {
-          backgroundColor: important ? theme.dangerSoft : theme.card,
-          borderColor: important ? theme.danger : theme.border,
-        },
+        important
+          ? { borderLeftWidth: 6, borderLeftColor: colors.danger, paddingLeft: Spacing.lg - 4 }
+          : null,
       ]}>
-      {onDelete ? (
-        <Pressable
-          onPress={(e: any) => {
-            e?.stopPropagation?.();
-            e?.preventDefault?.();
-            if (!deleting) onDelete();
-          }}
-          disabled={!!deleting}
-          style={({ pressed }) => [
-            styles.deleteBtn,
-            {
-              backgroundColor: important ? theme.danger : theme.dangerSoft,
-              borderColor: theme.danger,
-              opacity: deleting ? 0.6 : 1,
-              transform: [{ scale: pressed && !deleting ? 0.9 : 1 }],
-            },
-          ]}
-          hitSlop={8}
-          accessibilityLabel="Hapus pengumuman"
-          accessibilityRole="button">
-          {deleting ? (
-            <ActivityIndicator size="small" color={important ? '#FFFFFF' : theme.danger} />
-          ) : (
-            <Ionicons name="trash-outline" size={16} color={important ? '#FFFFFF' : theme.danger} />
-          )}
-        </Pressable>
-      ) : null}
       <View style={styles.header}>
-        <View
-          style={[
-            styles.iconBox,
-            { backgroundColor: important ? theme.danger : theme.primarySoft },
-          ]}>
+        <View style={[styles.iconBox, { backgroundColor: accentSoft, borderColor: accent }]}>
           <Ionicons
-            name={important ? 'megaphone' : 'megaphone-outline'}
-            size={20}
-            color={important ? '#FFFFFF' : theme.primary}
+            name={important ? 'alert-circle' : 'megaphone-outline'}
+            size={26}
+            color={accent}
           />
         </View>
-        <View style={[styles.headerText, onDelete ? styles.headerTextWithDelete : null]}>
-          <Text
-            style={[
-              styles.badge,
-              { color: important ? theme.danger : theme.primary },
-            ]}>
+
+        <View style={styles.headerText}>
+          <AppText variant="badge" rawColor={accent} numberOfLines={1}>
             {important ? 'PENTING' : 'PENGUMUMAN'}
-          </Text>
-          <Text style={[styles.time, { color: theme.textMuted }]}>
+          </AppText>
+          <AppText variant="caption" color="textMuted" numberOfLines={2}>
             {timeAgo(announcement.created_at)}
             {announcement.profiles?.full_name ? ` · ${announcement.profiles.full_name}` : ''}
-          </Text>
+          </AppText>
         </View>
+
+        {onDelete ? (
+          deleting ? (
+            <View style={styles.deleteSlot}>
+              <ActivityIndicator size="small" color={colors.danger} />
+            </View>
+          ) : (
+            <IconButton
+              icon="trash-outline"
+              label={`Hapus pengumuman ${announcement.title}`}
+              tone="danger"
+              onPress={onDelete}
+            />
+          )
+        ) : null}
       </View>
 
-      <Text style={[styles.title, { color: theme.text }]} numberOfLines={2}>
+      <AppText variant="bodyStrong" color="text">
         {announcement.title}
-      </Text>
+      </AppText>
 
-      <Text style={[styles.body, { color: theme.textSecondary }]} numberOfLines={4}>
+      {/* Pengumuman desa itu informasi resmi — warga perlu membaca isinya, jadi
+          dibiarkan sampai 6 baris, bukan 4 seperti sebelumnya. */}
+      <AppText variant="body" color="textSecondary" numberOfLines={6}>
         {announcement.body}
-      </Text>
-    </View>
+      </AppText>
+
+      <Pressable
+        onPress={share}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Bagikan pengumuman ini ke WhatsApp"
+        style={({ pressed }) => [
+          styles.shareBtn,
+          {
+            backgroundColor: colors.primarySoft,
+            borderColor: colors.primaryText,
+            opacity: pressed ? 0.7 : 1,
+          },
+        ]}>
+        <Ionicons name="logo-whatsapp" size={20} color={colors.primaryText} />
+        <AppText variant="caption" color="primary">
+          Bagikan
+        </AppText>
+      </Pressable>
+    </Surface>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    padding: Spacing.three,
-    gap: Spacing.two,
-    ...Shadows.md,
-  },
-  deleteBtn: {
-    position: 'absolute',
-    top: Spacing.two,
-    right: Spacing.two,
-    width: 32,
-    height: 32,
-    borderRadius: Radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-    borderWidth: 1,
+    padding: Spacing.lg,
+    gap: Spacing.md,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
+    gap: Spacing.md,
   },
   iconBox: {
-    width: 42,
-    height: 42,
+    width: 52,
+    height: 52,
     borderRadius: Radius.md,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerText: {
     flex: 1,
-    gap: 1,
+    gap: 2,
   },
-  headerTextWithDelete: {
-    paddingRight: Spacing.four + 4,
+  deleteSlot: {
+    width: Touch.icon,
+    height: Touch.icon,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  badge: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-  },
-  time: {
-    fontSize: 12,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  body: {
-    fontSize: 13.5,
-    lineHeight: 19,
+  shareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    minHeight: Touch.min,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.pill,
+    borderWidth: 1.5,
+    alignSelf: 'flex-start',
   },
 });

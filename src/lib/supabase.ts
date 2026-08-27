@@ -4,6 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
+import type { Database } from '@/lib/database.types';
+
 export const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 export const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
@@ -24,7 +26,10 @@ const webStorage = {
   },
 };
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+// Tipe `Database` membuat TypeScript ikut memeriksa nama tabel, nama kolom, dan
+// nilai enum di setiap kueri — jadi salah tulis nama kolom tertangkap saat
+// mengetik, bukan saat app sudah jalan di HP warga.
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: Platform.OS === 'web' ? webStorage : AsyncStorage,
     autoRefreshToken: true,

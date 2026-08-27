@@ -7,19 +7,17 @@
     "icon": "./assets/images/icon.png",
     "scheme": "secaling",
     "userInterfaceStyle": "automatic",
-    "ios": {
-      "icon": "./assets/expo.icon"
-    },
+    "backgroundColor": "#ECF2EE",
     "android": {
       "package": "com.secaling.app",
       "versionCode": 1,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E7F5EE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
-      "predictiveBackGestureEnabled": false
+      }
     },
     "web": {
       "output": "static",
@@ -28,24 +26,40 @@
     "plugins": [
       "expo-router",
       [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/PlusJakartaSans-Regular.ttf",
+            "./assets/fonts/PlusJakartaSans-Medium.ttf",
+            "./assets/fonts/PlusJakartaSans-SemiBold.ttf",
+            "./assets/fonts/PlusJakartaSans-Bold.ttf",
+            "./assets/fonts/PlusJakartaSans-ExtraBold.ttf"
+          ]
+        }
+      ],
+      [
         "expo-splash-screen",
         {
-          "backgroundColor": "#059669",
+          "backgroundColor": "#047857",
+          "dark": {
+            "backgroundColor": "#101A15"
+          },
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 180
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Aplikasi menggunakan foto Anda sebagai bukti laporan keamanan desa.",
-          "cameraPermission": "Aplikasi membutuhkan akses kamera untuk mengambil foto bukti laporan."
+          "photosPermission": "Secaling perlu izin membuka galeri agar Anda bisa memilih foto sebagai bukti laporan keamanan desa.",
+          "cameraPermission": "Secaling perlu izin memakai kamera agar Anda bisa memfoto langsung kejadian yang dilaporkan.",
+          "microphonePermission": false
         }
       ],
       [
         "expo-notifications",
         {
-          "color": "#DC2626",
+          "color": "#C81E1E",
           "defaultChannel": "alerts"
         }
       ]
@@ -53,6 +67,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2d796e14-ceca-47f0-ae1f-c35ee6c68e4b"
+      }
+    },
+    "owner": "ridztemplate11"
   }
 }

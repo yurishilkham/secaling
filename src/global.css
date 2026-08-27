@@ -1,9 +1,27 @@
+/**
+ * Gaya untuk versi web.
+ *
+ * Font kustom di web dimuat lewat `expo-font`, bukan lewat @font-face di sini.
+ * Berkas ini hanya menyetel latar halaman supaya tidak berkedip putih sebelum
+ * React selesai memasang tampilan.
+ */
 :root {
-  --font-display:
-    Spline Sans, Inter, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
-    Segoe UI Symbol, Noto Color Emoji;
-  --font-mono:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
-  --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
-  --font-serif: Georgia, 'Times New Roman', serif;
+  --secaling-background: #ecf2ee;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --secaling-background: #101a15;
+  }
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  background-color: var(--secaling-background);
+  /* Cegah tarik-untuk-menyegarkan bawaan peramban seluler agar tidak bentrok
+     dengan tarik-untuk-menyegarkan milik app. */
+  overscroll-behavior-y: none;
 }

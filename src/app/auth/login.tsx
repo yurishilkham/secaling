@@ -1,173 +1,279 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
+import { AppText } from '@/components/ui/app-text';
+import { BackButton } from '@/components/ui/back-button';
 import { BrandHeader } from '@/components/ui/brand-header';
 import { Button } from '@/components/ui/button';
+import { InlineBanner } from '@/components/ui/inline-banner';
 import { Input } from '@/components/ui/input';
+import { OrDivider } from '@/components/ui/or-divider';
 import { Screen } from '@/components/ui/screen';
-import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
-import { supabase } from '@/lib/supabase';
+import { Surface } from '@/components/ui/surface';
+import { Radius, Spacing } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/use-app-theme';
+import { friendlyError } from '@/lib/errors';
 import { signInWithGoogle } from '@/lib/google-auth';
+import { supabase } from '@/lib/supabase';
+
+type FieldErrors = { email?: string; password?: string };
 
 export default function LoginScreen() {
-  const theme = useTheme();
+  const { colors } = useAppTheme();
   const router = useRouter();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [banner, setBanner] = useState<
+    { tone: 'error' | 'success' | 'info'; message: string } | null
+  >(null);
+
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  /** Email belum diperiksa — tombol kirim ulang ditampilkan. */
+  const [needsVerify, setNeedsVerify] = useState(false);
+
+  function goHome() {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)');
+  }
 
   async function submit() {
-    if (!email.trim() || !password) {
-      Alert.alert('Lengkapi data', 'Email dan kata sandi wajib diisi.');
-      return;
-    }
+    const cleanEmail = email.trim().toLowerCase();
+
+    const next: FieldErrors = {};
+    if (!cleanEmail) next.email = 'Tulis email Anda.';
+    if (!password) next.password = 'Tulis kata sandi Anda.';
+    setErrors(next);
+    if (Object.keys(next).length > 0) return;
+
+    setBanner(null);
+    setNeedsVerify(false);
     setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
       password,
     });
+
     setLoading(false);
 
     if (error) {
       const msg = error.message.toLowerCase();
-      if (msg.includes('email not confirmed') || msg.includes('email not confirmed')) {
-        Alert.alert('Email belum verifikasi', 'Akun Anda belum diverifikasi. Cek inbox email untuk tautan verifikasi atau kirim ulang.', [
-          { text: 'Batal', style: 'cancel' },
-          {
-            text: 'Kirim ulang',
-            onPress: async () => {
-              const { error: resendError } = await supabase.auth.resend({
-                type: 'signup',
-                email: email.trim().toLowerCase(),
-              });
-              if (resendError) Alert.alert('Gagal mengirim', resendError.message);
-              else Alert.alert('Terkirim', 'Tautan verifikasi dikirim ulang ke email Anda.');
-            },
-          },
-        ]);
+
+      // Email belum diperiksa: dulu ini memunculkan Alert bertombol, lalu Alert
+      // lagi di dalam callback-nya — popup di atas popup.
+      if (msg.includes('email not confirmed') || msg.includes('not confirmed')) {
+        setNeedsVerify(true);
+        setBanner({
+          tone: 'info',
+          message:
+            'Email Anda belum dipastikan. Buka kotak masuk email dan ketuk tautan dari kami, atau minta kami kirim ulang di bawah.',
+        });
         return;
       }
+
       if (msg.includes('invalid login credentials')) {
-        Alert.alert('Gagal masuk', 'Email atau kata sandi salah. Coba lagi atau gunakan Masuk dengan Google.');
+        setErrors({
+          password: 'Email atau kata sandi salah. Periksa lagi.',
+        });
+        setBanner({
+          tone: 'error',
+          message:
+            'Kalau lupa kata sandi, Anda bisa masuk memakai akun Google dengan email yang sama.',
+        });
         return;
       }
-      Alert.alert('Gagal masuk', error.message);
+
+      setBanner({ tone: 'error', message: friendlyError(error, 'login').message });
       return;
     }
-    // pastikan session tersimpan sebelum navigasi (untuk warga & admin sama)
-    const { data: sess } = await supabase.auth.getSession();
-    if (sess.session) {
-      if (router.canGoBack()) router.back();
-      else router.replace('/(tabs)');
-    } else {
-      // fallback jika session belum ready (PKCE)
-      setTimeout(() => {
-        if (router.canGoBack()) router.back();
-        else router.replace('/(tabs)');
-      }, 600);
+
+    /**
+     * Navigasi setelah sesi benar-benar terbaca.
+     *
+     * Kode lama memakai `setTimeout(..., 600)` sebagai jalan cadangan: kalau
+     * sesi belum terbaca, tetap pindah halaman setelah 600ms tanpa memastikan
+     * apa pun. Di sambungan lambat itu memindahkan warga meski masuknya belum
+     * tentu berhasil.
+     */
+    const { data } = await supabase.auth.getSession();
+    if (data.session) {
+      goHome();
+      return;
     }
+    setBanner({
+      tone: 'error',
+      message: 'Masuk belum selesai. Periksa sambungan internet Anda, lalu coba lagi.',
+    });
+  }
+
+  async function resendVerification() {
+    setResending(true);
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.trim().toLowerCase(),
+    });
+    setResending(false);
+
+    if (error) {
+      setBanner({ tone: 'error', message: friendlyError(error, 'resendVerify').message });
+      return;
+    }
+    setBanner({
+      tone: 'success',
+      message: 'Sudah kami kirim ulang. Buka kotak masuk email Anda.',
+    });
   }
 
   async function handleGoogleLogin() {
+    setBanner(null);
     setGoogleLoading(true);
+
     try {
       await signInWithGoogle();
-      // di web, akan redirect otomatis; di native, session sudah ter-set via exchangeCodeForSession
-      // beri jeda sedikit agar onAuthStateChange terpicu sebelum navigasi
-      setTimeout(() => {
-        if (router.canGoBack()) router.back();
-        else router.replace('/(tabs)');
-      }, 800);
-    } catch (e: any) {
-      Alert.alert('Gagal masuk Google', e?.message ?? 'Terjadi kesalahan saat login Google.');
+      // Sama seperti di atas: pastikan sesinya ada, bukan menebak lewat jeda.
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        goHome();
+        return;
+      }
+      setBanner({
+        tone: 'error',
+        message: 'Masuk dengan Google belum selesai. Coba lagi.',
+      });
+    } catch (e) {
+      const msg = String((e as Error)?.message ?? '').toLowerCase();
+      // Warga menutup jendela Google sendiri — itu bukan kesalahan.
+      if (msg.includes('dibatalkan') || msg.includes('cancel')) {
+        setGoogleLoading(false);
+        return;
+      }
+      setBanner({ tone: 'error', message: friendlyError(e, 'googleLogin').message });
     } finally {
       setGoogleLoading(false);
     }
   }
 
   return (
-    <Screen>
-      <BrandHeader
-        title="Selamat Datang Kembali"
-        subtitle="Masuk untuk melapor kejadian dan terhubung dengan warga desa."
-      />
+    <Screen noTabBar>
+      {/* Header navigasi sudah dihapus, jadi layar ini menyediakan jalan
+          kembalinya sendiri. Penting: warga bisa membuka halaman ini dari
+          Profil atau dari layar Lapor, dan harus bisa membatalkan. */}
+      <BackButton label="Kembali" />
 
-      <View style={styles.form}>
-        <Input
-          label="Email"
-          placeholder="nama@email.com"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
+      <Animated.View entering={FadeIn.duration(320)}>
+        <BrandHeader
+          title="Selamat Datang"
+          subtitle="Masuk untuk melapor kejadian dan menerima kabar keamanan desa."
         />
-        <Input
-          label="Kata Sandi"
-          placeholder="••••••••"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-        <Button title="Masuk" onPress={submit} loading={loading} icon={<Ionicons name="log-in-outline" size={18} color={theme.onPrimary} />} />
+      </Animated.View>
 
-        <View style={styles.dividerRow}>
-          <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
-          <Text style={[styles.dividerText, { color: theme.textMuted }]}>atau</Text>
-          <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
-        </View>
+      {banner ? (
+        <Animated.View entering={FadeIn.duration(200)}>
+          <InlineBanner
+            tone={banner.tone}
+            message={banner.message}
+            onDismiss={() => setBanner(null)}
+          />
+        </Animated.View>
+      ) : null}
 
+      <Animated.View entering={FadeInDown.delay(60).duration(320)}>
+        <Surface tone="card" radius={Radius.xl} style={styles.form}>
+          <Input
+            label="Email"
+            required
+            placeholder="nama@gmail.com"
+            value={email}
+            onChangeText={(v) => {
+              setEmail(v);
+              setErrors((p) => ({ ...p, email: undefined }));
+            }}
+            error={errors.email}
+            autoCapitalize="none"
+            autoComplete="email"
+            keyboardType="email-address"
+          />
+
+          <Input
+            label="Kata Sandi"
+            required
+            placeholder="Tulis kata sandi Anda"
+            value={password}
+            onChangeText={(v) => {
+              setPassword(v);
+              setErrors((p) => ({ ...p, password: undefined }));
+            }}
+            error={errors.password}
+            secureTextEntry
+            autoComplete="current-password"
+          />
+
+          <Button
+            title="Masuk"
+            size="large"
+            onPress={submit}
+            loading={loading}
+            icon={<Ionicons name="log-in-outline" size={24} color={colors.onPrimary} />}
+          />
+
+          {needsVerify ? (
+            <Button
+              title="Kirim Ulang Email"
+              variant="outline"
+              onPress={resendVerification}
+              loading={resending}
+              icon={<Ionicons name="mail-outline" size={22} color={colors.primaryText} />}
+            />
+          ) : null}
+
+          <OrDivider />
+
+          <Button
+            title="Masuk dengan Google"
+            variant="outline"
+            onPress={handleGoogleLogin}
+            loading={googleLoading}
+            icon={<Ionicons name="logo-google" size={22} color={colors.primaryText} />}
+          />
+        </Surface>
+      </Animated.View>
+
+      {/* Tautan pindah halaman jadi tombol selebar layar.
+          Sebelumnya ini teks 14px tanpa latar — tinggi terlihatnya sekitar 18px,
+          padahal itu satu-satunya jalan menuju halaman daftar. */}
+      <Animated.View entering={FadeInDown.delay(120).duration(320)} style={styles.footer}>
+        <AppText variant="secondary" color="textSecondary" align="center">
+          Belum punya akun Secaling?
+        </AppText>
         <Button
-          title="Masuk dengan Google"
-          onPress={handleGoogleLogin}
-          loading={googleLoading}
-          variant="outline"
-          icon={<Ionicons name="logo-google" size={18} color={theme.primary} />}
+          title="Daftar Akun Baru"
+          variant="secondary"
+          onPress={() => router.replace('/auth/register')}
+          icon={<Ionicons name="person-add-outline" size={22} color={colors.primaryText} />}
         />
-        <Text style={[styles.oauthNote, { color: theme.textMuted }]}>Untuk warga maupun admin — role tetap mengikuti data profil.</Text>
-      </View>
+      </Animated.View>
 
-      <View style={styles.footer}>
-        <Text style={{ color: theme.textSecondary }}>Belum punya akun?</Text>
-        <Pressable onPress={() => router.replace('/auth/register')}>
-          <Text style={{ color: theme.primary, fontWeight: '700' }}>Daftar sekarang</Text>
-        </Pressable>
-      </View>
+      <View style={styles.spacer} />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   form: {
-    gap: Spacing.three,
-    marginTop: Spacing.five,
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    marginVertical: Spacing.one,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-  },
-  dividerText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  oauthNote: {
-    fontSize: 11,
-    textAlign: 'center',
-    marginTop: -Spacing.one,
+    padding: Spacing.lg,
+    gap: Spacing.lg,
   },
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: Spacing.one,
-    marginTop: Spacing.four,
+    gap: Spacing.sm,
+  },
+  spacer: {
+    height: Spacing.lg,
   },
 });

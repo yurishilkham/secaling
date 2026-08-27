@@ -1,25 +1,36 @@
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { Radius, Shadows, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { AppText } from '@/components/ui/app-text';
+import { BrandLogo } from '@/components/ui/brand-logo';
+import { Spacing } from '@/constants/theme';
 
-export function BrandHeader({ title, subtitle }: { title: string; subtitle: string }) {
-  const theme = useTheme();
+type Props = {
+  title: string;
+  subtitle: string;
+};
 
+/**
+ * Kepala halaman masuk/daftar.
+ *
+ * Perubahan:
+ *   - Ikon `shield-checkmark` bawaan Ionicons diganti logo Secaling asli.
+ *   - Judul 23px -> varian `title` 24px, jadi konsisten dengan judul halaman
+ *     lain (dulu halaman auth sendirian memakai 23px).
+ *   - Logo 88px -> 80px. Di HP pendek dengan papan tombol terbuka, logo besar
+ *     mendorong kolom isian keluar layar.
+ *   - Tulisan "SECALING" berhuruf renggang dihapus. Nama app sudah ada di
+ *     judul, dan teks 11.5px dengan opacity 0.7 gagal syarat kontras.
+ */
+export function BrandHeader({ title, subtitle }: Props) {
   return (
     <View style={styles.header}>
-      <LinearGradient
-        colors={[theme.primary, theme.primaryDark]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.logo}>
-        <Ionicons name="shield-checkmark" size={34} color={theme.onPrimary} />
-      </LinearGradient>
-      <Text style={[styles.appName, { color: theme.text }]}>Secaling</Text>
-      <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
-      <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{subtitle}</Text>
+      <BrandLogo size={80} />
+      <AppText variant="title" color="text" align="center" heading style={styles.title}>
+        {title}
+      </AppText>
+      <AppText variant="body" color="textSecondary" align="center" style={styles.subtitle}>
+        {subtitle}
+      </AppText>
     </View>
   );
 }
@@ -27,33 +38,13 @@ export function BrandHeader({ title, subtitle }: { title: string; subtitle: stri
 const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
-    gap: Spacing.two,
-    marginTop: Spacing.three,
-  },
-  logo: {
-    width: 84,
-    height: 84,
-    borderRadius: Radius.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.lg,
-  },
-  appName: {
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    opacity: 0.6,
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '800',
-    marginTop: Spacing.one,
-    textAlign: 'center',
+    marginTop: Spacing.xs,
   },
   subtitle: {
-    fontSize: 14,
-    lineHeight: 21,
-    textAlign: 'center',
+    maxWidth: 340,
   },
 });

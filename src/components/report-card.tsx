@@ -1,11 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
-import { CATEGORIES, CategoryKey } from '@/constants/categories';
-import { Radius, Shadows, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { AppText } from '@/components/ui/app-text';
+import { ConfirmButton } from '@/components/ui/confirm-button';
+import { IconButton } from '@/components/ui/icon-button';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { Surface } from '@/components/ui/surface';
+import { type CategoryKey } from '@/constants/categories';
+import { type ReportStatus } from '@/constants/report-status';
+import { Radius, Spacing, Springs, Touch } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/use-app-theme';
+import { useCategory } from '@/hooks/use-category';
 import { timeAgo } from '@/lib/format';
+import { buildReportMessage, shareToWhatsApp } from '@/lib/share';
+
+export type { ReportStatus };
 
 export type Report = {
   id: string;
@@ -18,185 +31,280 @@ export type Report = {
   photo_url: string | null;
   reporter_id: string;
   created_at: string;
+  status: ReportStatus;
+  status_changed_at: string | null;
+  status_changed_by: string | null;
   profiles?: { full_name: string } | null;
+};
+
+type Props = {
+  report: Report;
+  onDelete?: () => void;
+  deleting?: boolean;
+
+  /** Jumlah warga yang membenarkan. Kalau tidak diisi, tombolnya disembunyikan. */
+  confirmCount?: number;
+  confirmedByMe?: boolean;
+  onConfirm?: () => void;
+  confirmLoading?: boolean;
+  /** Belum masuk — tombol pembenaran tampil tapi tidak aktif. */
+  confirmDisabled?: boolean;
 };
 
 export function ReportCard({
   report,
   onDelete,
   deleting,
-}: {
-  report: Report;
-  onDelete?: () => void;
-  deleting?: boolean;
-}) {
-  const theme = useTheme();
+  confirmCount,
+  confirmedByMe,
+  onConfirm,
+  confirmLoading,
+  confirmDisabled,
+}: Props) {
+  const { colors } = useAppTheme();
   const router = useRouter();
-  const cat = CATEGORIES[report.category] ?? CATEGORIES.lainnya;
+  const resolveCategory = useCategory();
+  const cat = resolveCategory(report.category);
+
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  function openDetail() {
+    if (Platform.OS !== 'web') {
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch {}
+    }
+    router.push(`/laporan/${report.id}`);
+  }
+
+  function share() {
+    shareToWhatsApp(
+      buildReportMessage({
+        category: report.category,
+        title: report.title,
+        description: report.description,
+        locationName: report.location_name,
+        createdAt: report.created_at,
+        reporterName: report.profiles?.full_name ?? null,
+      }),
+    );
+  }
+
+  const showConfirm = confirmCount !== undefined && !!onConfirm;
 
   return (
-    <Pressable
-      onPress={() => router.push(`/laporan/${report.id}`)}
-      style={({ pressed }) => [
-        styles.card,
-        {
-          backgroundColor: theme.card,
-          borderColor: theme.border,
-          transform: [{ scale: pressed ? 0.98 : 1 }],
-        },
-      ]}>
-      <View style={styles.header}>
-        <View style={[styles.iconBox, { backgroundColor: cat.soft }]}>
-          <Ionicons name={cat.icon} size={20} color={cat.color} />
-        </View>
-        <View style={styles.headerText}>
-          <Text style={[styles.catLabel, { color: cat.color }]}>{cat.label}</Text>
-          <Text style={[styles.time, { color: theme.textMuted }]}>{timeAgo(report.created_at)}</Text>
-        </View>
-        {onDelete ? (
-          <Pressable
-            onPress={(e: any) => {
-              // cegah bubble ke outer Pressable (penting di web)
-              e?.stopPropagation?.();
-              e?.preventDefault?.();
-              if (!deleting) onDelete();
-            }}
-            disabled={!!deleting}
-            style={({ pressed }) => [
-              styles.deleteBtn,
-              {
-                backgroundColor: theme.dangerSoft,
-                borderColor: theme.danger,
-                opacity: deleting ? 0.6 : 1,
-                transform: [{ scale: pressed && !deleting ? 0.9 : 1 }],
-              },
-            ]}
-            hitSlop={8}
-            accessibilityLabel="Hapus laporan"
-            accessibilityRole="button">
-            {deleting ? (
-              <ActivityIndicator size="small" color={theme.danger} />
+    <Animated.View style={animatedStyle}>
+      <Pressable
+        onPress={openDetail}
+        onPressIn={() => {
+          scale.value = withSpring(0.98, Springs.snappy);
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, Springs.gentle);
+        }}
+        accessibilityRole="button"
+        // Diucapkan sebagai satu kalimat bermakna, bukan potongan terpisah.
+        accessibilityLabel={`${cat.label}. ${report.title}. ${timeAgo(report.created_at)}`}
+        accessibilityHint="Ketuk untuk membaca laporan lengkap">
+        <Surface tone="card" radius={Radius.lg} style={styles.card}>
+          <View style={styles.header}>
+            <View style={[styles.iconBox, { backgroundColor: cat.soft, borderColor: cat.color }]}>
+              <Ionicons name={cat.icon} size={26} color={cat.color} />
+            </View>
+
+            <View style={styles.headerText}>
+              <AppText variant="badge" rawColor={cat.color} numberOfLines={1}>
+                {cat.label}
+              </AppText>
+              <AppText variant="caption" color="textMuted" numberOfLines={1}>
+                {timeAgo(report.created_at)}
+              </AppText>
+            </View>
+
+            {onDelete ? (
+              deleting ? (
+                <View style={styles.deleteSlot}>
+                  <ActivityIndicator size="small" color={colors.danger} />
+                </View>
+              ) : (
+                <IconButton
+                  icon="trash-outline"
+                  label={`Hapus laporan ${report.title}`}
+                  tone="danger"
+                  onPress={onDelete}
+                />
+              )
             ) : (
-              <Ionicons name="trash-outline" size={16} color={theme.danger} />
+              <Ionicons name="chevron-forward" size={24} color={colors.textMuted} />
             )}
-          </Pressable>
-        ) : (
-          <View style={styles.chevron}>
-            <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
           </View>
-        )}
-      </View>
 
-      <Text style={[styles.title, { color: theme.text }]} numberOfLines={2}>
-        {report.title}
-      </Text>
+          {/* Status hanya ditampilkan kalau BUKAN 'baru'.
+              Kalau setiap laporan membawa lencana "Laporan Baru", lencananya
+              kehilangan makna dan cuma menambah keramaian. Yang berarti bagi
+              warga adalah tahu ketika ada yang mulai menanganinya. */}
+          {report.status !== 'baru' ? <StatusBadge status={report.status} /> : null}
 
-      <Text style={[styles.desc, { color: theme.textSecondary }]} numberOfLines={2}>
-        {report.description}
-      </Text>
+          <AppText variant="bodyStrong" color="text" numberOfLines={2}>
+            {report.title}
+          </AppText>
 
-      {report.photo_url ? (
-        <Image
-          source={{ uri: report.photo_url }}
-          style={[styles.thumb, { backgroundColor: theme.background }]}
-          resizeMode="cover"
-        />
-      ) : null}
+          <AppText variant="secondary" color="textSecondary" numberOfLines={3}>
+            {report.description}
+          </AppText>
 
-      <View style={styles.footer}>
-        {report.location_name ? (
-          <View style={styles.metaRow}>
-            <Ionicons name="location-outline" size={13} color={theme.textMuted} />
-            <Text style={[styles.meta, { color: theme.textMuted }]} numberOfLines={1}>
-              {report.location_name}
-            </Text>
+          {report.photo_url ? (
+            <Image
+              source={{ uri: report.photo_url }}
+              style={[styles.thumb, { backgroundColor: colors.skeleton }]}
+              contentFit="cover"
+              transition={180}
+              accessible={false}
+            />
+          ) : null}
+
+          <View style={styles.metaWrap}>
+            {report.location_name ? (
+              <View
+                style={[
+                  styles.metaPill,
+                  { backgroundColor: colors.background, borderColor: colors.border },
+                ]}>
+                <Ionicons name="location" size={16} color={colors.primaryText} />
+                <AppText
+                  variant="caption"
+                  color="textSecondary"
+                  numberOfLines={1}
+                  style={styles.metaText}>
+                  {report.location_name}
+                </AppText>
+              </View>
+            ) : null}
+
+            {report.profiles?.full_name ? (
+              <View
+                style={[
+                  styles.metaPill,
+                  { backgroundColor: colors.background, borderColor: colors.border },
+                ]}>
+                <Ionicons name="person" size={16} color={colors.textMuted} />
+                <AppText
+                  variant="caption"
+                  color="textMuted"
+                  numberOfLines={1}
+                  style={styles.metaText}>
+                  {report.profiles.full_name}
+                </AppText>
+              </View>
+            ) : null}
           </View>
-        ) : null}
-        {report.profiles?.full_name ? (
-          <View style={styles.metaRow}>
-            <Ionicons name="person-outline" size={13} color={theme.textMuted} />
-            <Text style={[styles.meta, { color: theme.textMuted }]} numberOfLines={1}>
-              {report.profiles.full_name}
-            </Text>
+
+          <View style={styles.actions}>
+            {showConfirm ? (
+              <ConfirmButton
+                count={confirmCount ?? 0}
+                confirmed={!!confirmedByMe}
+                onPress={onConfirm!}
+                loading={confirmLoading}
+                disabled={confirmDisabled}
+              />
+            ) : null}
+
+            <Pressable
+              onPress={share}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Bagikan laporan ini ke WhatsApp"
+              style={({ pressed }) => [
+                styles.shareBtn,
+                {
+                  backgroundColor: colors.primarySoft,
+                  borderColor: colors.primaryText,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}>
+              <Ionicons name="logo-whatsapp" size={20} color={colors.primaryText} />
+              <AppText variant="caption" color="primary">
+                Bagikan
+              </AppText>
+            </Pressable>
           </View>
-        ) : null}
-      </View>
-    </Pressable>
+        </Surface>
+      </Pressable>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    padding: Spacing.three,
-    gap: Spacing.two,
-    ...Shadows.md,
+    padding: Spacing.lg,
+    gap: Spacing.md,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
+    gap: Spacing.md,
   },
   iconBox: {
-    width: 42,
-    height: 42,
+    width: 52,
+    height: 52,
     borderRadius: Radius.md,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerText: {
     flex: 1,
-    gap: 1,
+    gap: 2,
   },
-  catLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  time: {
-    fontSize: 12,
-  },
-  chevron: {
-    marginLeft: 'auto',
-  },
-  deleteBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.full,
+  deleteSlot: {
+    width: Touch.icon,
+    height: Touch.icon,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 'auto',
-    borderWidth: 1,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  desc: {
-    fontSize: 13.5,
-    lineHeight: 19,
   },
   thumb: {
     width: '100%',
-    height: 150,
+    height: 180,
     borderRadius: Radius.md,
   },
-  footer: {
+  metaWrap: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: Spacing.three,
-    marginTop: Spacing.one,
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
   },
-  metaRow: {
+  metaPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.one,
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: Radius.pill,
+    borderWidth: 1.5,
+    flexShrink: 1,
+    maxWidth: '100%',
+  },
+  metaText: {
     flexShrink: 1,
   },
-  meta: {
-    fontSize: 12,
+  actions: {
+    // Membungkus ke baris berikutnya, bukan memaksa dua tombol berdesakan di
+    // layar sempit.
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  shareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    minHeight: Touch.min,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.pill,
+    borderWidth: 1.5,
     flexShrink: 1,
   },
 });

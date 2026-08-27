@@ -1,12 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
-import { Radius, Shadows, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { AppText } from '@/components/ui/app-text';
+import { Radius, Shadows, Spacing, Springs, Touch } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/use-app-theme';
 
-type RouteName = 'index' | 'lapor' | 'pengumuman' | 'profil';
+type RouteName = 'index' | 'pengumuman' | 'profil';
 
 type TabBarProps = {
   state: { index: number; routes: { key: string; name: string }[] };
@@ -14,95 +17,172 @@ type TabBarProps = {
   navigation: { navigate: (name: string) => void };
 };
 
-function iconFor(
-  name: RouteName,
-  focused: boolean
-): { icon: keyof typeof Ionicons.glyphMap; size: number } {
+function iconFor(name: RouteName, focused: boolean): keyof typeof Ionicons.glyphMap {
   switch (name) {
-    case 'index':
-      return { icon: focused ? 'home' : 'home-outline', size: 21 };
     case 'pengumuman':
-      return { icon: focused ? 'megaphone' : 'megaphone-outline', size: 21 };
+      return focused ? 'megaphone' : 'megaphone-outline';
     case 'profil':
-      return { icon: focused ? 'person' : 'person-outline', size: 21 };
+      return focused ? 'person' : 'person-outline';
     default:
-      return { icon: 'add', size: 30 };
+      return focused ? 'home' : 'home-outline';
   }
 }
 
-export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) {
-  const theme = useTheme();
-  const insets = useSafeAreaInsets();
-  // Fallback solid colors agar tidak tembus saat theme belum ready (web SSR / colorScheme null)
-  const card = theme?.card ?? '#FFFFFF';
-  const border = theme?.border ?? '#E1ECE5';
-  const background = theme?.background ?? '#F4F8F5';
-  const primary = theme?.primary ?? '#059669';
-  const primaryDark = theme?.primaryDark ?? '#047857';
-  const primarySoft = theme?.primarySoft ?? '#E7F5EE';
-  const onPrimary = theme?.onPrimary ?? '#FFFFFF';
-  const textMuted = theme?.textMuted ?? '#93A89D';
-  const textSecondary = theme?.textSecondary ?? '#556B5F';
+function TabItem({
+  focused,
+  label,
+  icon,
+  onPress,
+}: {
+  focused: boolean;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+}) {
+  const { colors } = useAppTheme();
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   return (
-    <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 8), backgroundColor: background }]}>
-      <View style={[styles.bar, { backgroundColor: card, borderColor: border, opacity: 1 }]}>
-        {state.routes.map((route, index) => {
-          const isFocused = state.index === index;
-          const name = route.name as RouteName;
-          const options = descriptors[route.key].options;
-          const label = (options.title ?? name) as string;
+    <Pressable
+      onPress={() => {
+        if (Platform.OS !== 'web') {
+          try {
+            Haptics.selectionAsync();
+          } catch {}
+        }
+        onPress();
+      }}
+      onPressIn={() => {
+        scale.value = withSpring(0.92, Springs.snappy);
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, Springs.gentle);
+      }}
+      style={styles.item}
+      hitSlop={6}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: focused }}
+      accessibilityLabel={label}>
+      <Animated.View style={[animatedStyle, styles.itemInner]}>
+        <View
+          style={[
+            styles.itemIcon,
+            focused
+              ? { backgroundColor: colors.primarySoft, borderColor: colors.primaryText }
+              : { backgroundColor: 'transparent', borderColor: 'transparent' },
+          ]}>
+          <Ionicons name={icon} size={26} color={focused ? colors.primaryText : colors.textMuted} />
+        </View>
+        <AppText
+          variant="caption"
+          color={focused ? 'primary' : 'textMuted'}
+          numberOfLines={1}
+          style={styles.label}>
+          {label}
+        </AppText>
+      </Animated.View>
+    </Pressable>
+  );
+}
 
-          const onPress = () => {
-            if (!isFocused) {
-              navigation.navigate(route.name);
-            }
-          };
+/**
+ * Bilah tab bawah.
+ *
+ * Tiga tab ditambah satu tombol Lapor di tengah.
+ *
+ * Tombol Lapor BUKAN tab lagi — ia menavigasi ke `app/lapor.tsx`, halaman penuh
+ * di luar kelompok tab. Sebelumnya Lapor adalah tab keempat, sehingga bilah tab
+ * ikut tampil saat warga sedang menulis laporan: memakan ruang tepat ketika
+ * papan tombol sudah menutupi separuh layar.
+ *
+ * Blur juga sudah dibuang dari sini sejak Tahap 1 — di Android
+ * `blurMethod="dimezisBlurView"` tidak pernah aktif tanpa `blurTarget`, jadi
+ * biaya render dibayar tanpa hasil.
+ */
+export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) {
+  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
 
-          if (name === 'lapor') {
-            return (
-              <View key={route.key} style={styles.fabSlot}>
-                <Pressable
-                  onPress={onPress}
-                  style={({ pressed }) => [styles.fabPress, { transform: [{ scale: pressed ? 0.9 : 1 }] }]}>
-                  <LinearGradient
-                    colors={[primary, primaryDark]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.fab}>
-                    <Ionicons name="add" size={32} color={onPrimary} />
-                  </LinearGradient>
-                  <Text style={[styles.fabLabel, { color: textSecondary }]}>Lapor</Text>
-                </Pressable>
-              </View>
-            );
-          }
+  const fabScale = useSharedValue(1);
+  const fabStyle = useAnimatedStyle(() => ({ transform: [{ scale: fabScale.value }] }));
 
-          const { icon, size } = iconFor(name, isFocused);
+  // Beranda selalu di kiri, sisanya di kanan, dengan tombol Lapor di tengah.
+  const kiri = state.routes.filter((r) => r.name === 'index');
+  const kanan = state.routes.filter((r) => r.name !== 'index');
 
-          return (
+  function renderTab(route: { key: string; name: string }) {
+    const index = state.routes.findIndex((r) => r.key === route.key);
+    const isFocused = state.index === index;
+    const label = (descriptors[route.key].options.title ?? route.name) as string;
+
+    return (
+      <TabItem
+        key={route.key}
+        focused={isFocused}
+        label={label}
+        icon={iconFor(route.name as RouteName, isFocused)}
+        onPress={() => {
+          if (!isFocused) navigation.navigate(route.name);
+        }}
+      />
+    );
+  }
+
+  return (
+    <View
+      style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 10) }]}
+      pointerEvents="box-none">
+      <View
+        style={[
+          styles.barContainer,
+          { backgroundColor: colors.card, borderColor: colors.border },
+          Shadows.lg as object,
+        ]}>
+        <View style={styles.bar} accessibilityRole="tablist">
+          {kiri.map(renderTab)}
+
+          {/* Tombol Lapor — menavigasi ke halaman penuh, bukan berpindah tab. */}
+          <View style={styles.fabSlot}>
             <Pressable
-              key={route.key}
-              onPress={onPress}
-              style={({ pressed }) => [styles.item, { transform: [{ scale: pressed ? 0.94 : 1 }] }]}>
-              <View
-                style={[
-                  styles.itemIcon,
-                  isFocused ? { backgroundColor: primarySoft } : null,
-                ]}>
-                <Ionicons
-                  name={icon}
-                  size={size}
-                  color={isFocused ? primary : textMuted}
-                />
-              </View>
-              <Text
-                style={[styles.label, { color: isFocused ? primary : textMuted }]}>
-                {label}
-              </Text>
+              onPress={() => {
+                if (Platform.OS !== 'web') {
+                  try {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  } catch {}
+                }
+                router.push('/lapor');
+              }}
+              onPressIn={() => {
+                fabScale.value = withSpring(0.92, Springs.snappy);
+              }}
+              onPressOut={() => {
+                fabScale.value = withSpring(1, Springs.bouncy);
+              }}
+              style={styles.fabPress}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="Lapor kejadian"
+              accessibilityHint="Membuka formulir laporan tiga langkah">
+              <Animated.View style={fabStyle}>
+                <View
+                  style={[
+                    styles.fab,
+                    { backgroundColor: colors.primary, borderColor: colors.card },
+                    Shadows.md as object,
+                  ]}>
+                  <Ionicons name="add" size={34} color={colors.onPrimary} />
+                </View>
+              </Animated.View>
+              <AppText variant="caption" color="primary" numberOfLines={1}>
+                Lapor
+              </AppText>
             </Pressable>
-          );
-        })}
+          </View>
+
+          {kanan.map(renderTab)}
+        </View>
       </View>
     </View>
   );
@@ -111,59 +191,63 @@ export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) 
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    left: Spacing.three,
-    right: Spacing.three,
+    left: Spacing.md,
+    right: Spacing.md,
     bottom: 0,
+    alignItems: 'center',
+  },
+  barContainer: {
+    width: '100%',
+    maxWidth: 480,
+    borderRadius: Radius.xl,
+    borderWidth: 2,
   },
   bar: {
     flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.two,
-    ...Shadows.lg,
+    alignItems: 'flex-end',
+    paddingHorizontal: Spacing.xs,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.sm,
   },
   item: {
     flex: 1,
+    minHeight: Touch.comfortable,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  itemInner: {
+    alignItems: 'center',
     gap: 2,
-    paddingVertical: Spacing.two,
   },
   itemIcon: {
-    width: 38,
-    height: 30,
-    borderRadius: Radius.full,
+    width: 48,
+    height: 32,
+    borderRadius: Radius.pill,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   label: {
-    fontSize: 10.5,
-    fontWeight: '700',
+    textAlign: 'center',
   },
   fabSlot: {
-    flex: 1.15,
+    flex: 1.2,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
   },
   fabPress: {
     alignItems: 'center',
     gap: 2,
+    minHeight: Touch.comfortable,
   },
   fab: {
-    width: 58,
-    height: 58,
-    borderRadius: Radius.full,
+    width: 64,
+    height: 64,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -30,
-    borderWidth: 4,
-    borderColor: 'transparent',
-    ...Shadows.lg,
-  },
-  fabLabel: {
-    fontSize: 10.5,
-    fontWeight: '700',
+    // Naik ke atas bilah supaya jadi aksi paling menonjol.
+    marginTop: -26,
+    borderWidth: 3,
   },
 });

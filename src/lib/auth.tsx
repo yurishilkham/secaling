@@ -96,8 +96,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error: insertError } = await supabase.from('profiles').insert({
       id: userId,
       full_name: fallbackName,
-      dusun: '',
-      phone: '',
+      dusun: typeof meta.dusun === 'string' ? meta.dusun : '',
+      phone: typeof meta.phone === 'string' ? meta.phone : '',
       // role default 'warga' dari DB
     });
     if (!insertError) {

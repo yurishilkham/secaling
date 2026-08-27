@@ -31,7 +31,14 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+
+# Kredensial Firebase untuk notifikasi push.
+# Bukan rahasia sekelas kunci privat, tapi terikat pada project Firebase desa
+# dan sebaiknya tidak tersebar di repo publik.
+google-services.json
+GoogleService-Info.plist
 
 # typescript
 *.tsbuildinfo

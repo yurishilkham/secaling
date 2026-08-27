@@ -1,13 +1,13 @@
+import { useAppTheme } from '@/hooks/use-app-theme';
+import type { ThemeColors } from '@/constants/theme';
+
 /**
- * Learn more about light and dark modes:
- * https://docs.expo.dev/guides/color-schemes/
+ * Nama lama yang masih dipakai di banyak layar. Sekarang cuma penerus ke
+ * `useAppTheme().colors`. Layar baru sebaiknya langsung memakai `useAppTheme`
+ * karena di sana ada juga `type` (gaya teks) dan `sizeClass` (lebar layar).
  */
-
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
-export function useTheme() {
-  const scheme = useColorScheme() as string | null | undefined;
-  const normalized = (!scheme || scheme === 'unspecified' ? 'light' : scheme) as keyof typeof Colors;
-  return Colors[normalized] ?? Colors.light;
+export function useTheme(): ThemeColors {
+  return useAppTheme().colors;
 }
+
+export type { ThemeColors };
