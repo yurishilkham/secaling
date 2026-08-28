@@ -1,0 +1,45 @@
+# Berkas yang TIDAK diunggah ke EAS Build.
+#
+# EAS mengunggah project ke server untuk dibangun di sana. Tanpa berkas ini,
+# yang terkirim adalah semua yang dilacak git — dan itu terlalu banyak.
+#
+# CATATAN PENTING soal .env dan google-services.json:
+#   Keduanya diabaikan git supaya tidak tersebar di GitHub publik. Tapi EAS
+#   HANYA mengunggah berkas yang dilacak git, jadi keduanya tidak akan ikut ke
+#   build cloud. Akibatnya app jadi tapi tidak bisa konek Supabase dan
+#   notifikasi mati — dan buildnya tetap dilaporkan "berhasil", jadi penyebabnya
+#   sulit ditebak.
+#
+#   Berkas .easignore ini justru memaksa keduanya IKUT diunggah (baris `!` di
+#   bawah), tanpa perlu melacaknya di git. Jadi rahasianya tetap aman dari
+#   GitHub tapi build cloud tetap utuh.
+
+node_modules/
+
+# Folder native hasil prebuild — EAS membuatnya sendiri di server.
+/android
+/ios
+
+# Hasil build dan cache
+dist/
+web-build/
+.expo/
+.tmp-check/
+.tmp-export-check/
+*.apk
+*.aab
+
+# Skrip pemeriksaan yang tidak dipakai saat membangun
+scripts/
+
+# Log
+*.log
+gradle-*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Berkas rahasia yang WAJIB ikut walau diabaikan git.
+# Tanda `!` membatalkan pengabaian, khusus untuk unggahan EAS.
+!.env
+!google-services.json

@@ -26,6 +26,7 @@
     "expo-status-bar": "~57.0.1",
     "expo-symbols": "~57.0.2",
     "expo-system-ui": "~57.0.2",
+    "expo-updates": "~57.0.18",
     "expo-web-browser": "~57.0.2",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -50,7 +51,12 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "periksa": "tsc --noEmit && expo lint && node scripts/ui-audit.mjs",
+    "siapkan-kunci": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/siapkan-keystore.ps1",
+    "apk": "expo prebuild --platform android && cd android && gradlew.bat assembleRelease --no-daemon --max-workers=1",
+    "apk:lokasi": "node -e \"console.log(require('path').resolve('android/app/build/outputs/apk/release/app-release.apk'))\"",
+    "kirim-perbaikan": "node scripts/kirim-perbaikan.mjs"
   },
   "private": true
 }

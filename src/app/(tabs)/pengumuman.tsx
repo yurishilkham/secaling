@@ -14,6 +14,7 @@ import { Spacing } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { useAuth } from '@/lib/auth';
 import { friendlyError, type FriendlyError } from '@/lib/errors';
+import { buangSaluran, namaSaluranUnik } from '@/lib/realtime';
 import { supabase } from '@/lib/supabase';
 
 export default function PengumumanScreen() {
@@ -66,7 +67,9 @@ export default function PengumumanScreen() {
 
   useEffect(() => {
     const channel = supabase
-      .channel('pengumuman-realtime')
+      // Nama unik per pemasangan. Nama tetap membuat `.on()` melempar error
+      // kalau layar ini dipasang ulang sebelum saluran lama selesai dibuang.
+      .channel(namaSaluranUnik('pengumuman-realtime'))
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'announcements' },
@@ -98,7 +101,7 @@ export default function PengumumanScreen() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      buangSaluran(channel);
     };
   }, []);
 

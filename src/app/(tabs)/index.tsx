@@ -23,9 +23,18 @@ import { Spacing } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { useConfirmations } from '@/hooks/use-confirmations';
 import { useAuth } from '@/lib/auth';
-import { supabase } from '@/lib/supabase';
+import { buangSaluran, namaSaluranUnik } from '@/lib/realtime';
+import { PILIH_LAPORAN_DENGAN_PELAPOR, supabase } from '@/lib/supabase';
 
-const HOME_CHANNEL = 'home-realtime';
+/**
+ * Dasar nama saluran realtime — nomor urut ditambahkan saat dipakai.
+ *
+ * Nama TIDAK boleh tetap. `supabase.channel()` mengembalikan saluran yang sudah
+ * ada kalau namanya sama, dan `.on()` pada saluran yang sudah `subscribe()`
+ * melempar error yang menggagalkan seluruh layar. Itu terjadi tiap kali layar
+ * ini dipasang ulang, misalnya setelah warga masuk.
+ */
+const DASAR_SALURAN_BERANDA = 'home-realtime';
 
 export default function HomeScreen() {
   const { colors } = useAppTheme();
@@ -58,7 +67,7 @@ export default function HomeScreen() {
     const [reportRes, annRes] = await Promise.all([
       supabase
         .from('reports')
-        .select('*, profiles(full_name)')
+        .select(PILIH_LAPORAN_DENGAN_PELAPOR)
         .order('created_at', { ascending: false })
         .limit(30),
       supabase
@@ -91,7 +100,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     const channel = supabase
-      .channel(HOME_CHANNEL)
+      .channel(namaSaluranUnik(DASAR_SALURAN_BERANDA))
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reports' }, (payload) => {
         const row = payload.new as Report;
         supabase
@@ -134,7 +143,7 @@ export default function HomeScreen() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      buangSaluran(channel);
     };
   }, []);
 
