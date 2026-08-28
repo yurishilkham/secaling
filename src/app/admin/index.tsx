@@ -1,8 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { type Announcement, AnnouncementCard } from '@/components/announcement-card';
@@ -14,13 +13,14 @@ import { Button } from '@/components/ui/button';
 import { ConfirmSheet } from '@/components/ui/confirm-sheet';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
+import { FilterChip } from '@/components/ui/filter-chip';
 import { InlineBanner } from '@/components/ui/inline-banner';
 import { Screen } from '@/components/ui/screen';
 import { SectionHeader } from '@/components/ui/section-header';
 import { Skeleton, SkeletonCard } from '@/components/ui/skeleton';
 import { StatusControl } from '@/components/ui/status-control';
 import { Surface } from '@/components/ui/surface';
-import { Radius, Spacing, Touch } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { type ReportStatus } from '@/constants/report-status';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { useReportStatus } from '@/hooks/use-report-status';
@@ -203,7 +203,21 @@ export default function AdminIndexScreen() {
         />
       }>
       <Animated.View entering={FadeIn.duration(320)} style={styles.header}>
-        <BackButton label="Profil" />
+        <BackButton label="Keluar Mode Admin" />
+        {/* Banner tipis — penanda mode perangkat desa, bukan hiasan. Warga yang
+            jarang buka admin tidak perlu, tapi 3 perades yang cek sewaktu-waktu
+            perlu tahu bahwa aksi hapus/ubah status di bawah ini langsung terlihat
+            warga. Sengaja tipis (caption + icon 16) supaya tidak memakan ruang. */}
+        <View
+          style={[
+            styles.modeBanner,
+            { backgroundColor: colors.primarySoft, borderColor: colors.primaryText },
+          ]}>
+          <Ionicons name="shield-checkmark" size={16} color={colors.primaryText} />
+          <AppText variant="caption" color="primary">
+            Mode Perangkat Desa — perubahan di sini terlihat warga
+          </AppText>
+        </View>
         <AppText variant="title" color="text" heading>
           Menu Admin
         </AppText>
@@ -288,59 +302,21 @@ export default function AdminIndexScreen() {
                 contentContainerStyle={styles.filterRow}
                 accessibilityRole="tablist">
                 {STATUS_FILTERS.map((f) => {
-                  const active = statusFilter === f.key;
                   const jumlah =
                     f.key === 'semua'
                       ? reports.length
                       : f.key === 'belum-selesai'
                         ? belumSelesai.length
                         : reports.filter((r) => r.status === f.key).length;
-
                   return (
-                    <Pressable
+                    <FilterChip
                       key={f.key}
-                      onPress={() => {
-                        if (Platform.OS !== 'web') {
-                          try {
-                            Haptics.selectionAsync();
-                          } catch {}
-                        }
-                        setStatusFilter(f.key);
-                      }}
-                      accessibilityRole="tab"
-                      accessibilityState={{ selected: active }}
+                      label={f.label}
+                      count={jumlah}
+                      active={statusFilter === f.key}
+                      onPress={() => setStatusFilter(f.key)}
                       accessibilityLabel={`${f.label}, ${jumlah} laporan`}
-                      style={[
-                        styles.filterChip,
-                        {
-                          backgroundColor: active ? colors.primary : colors.card,
-                          borderColor: active ? colors.primary : colors.borderStrong,
-                        },
-                      ]}>
-                      {active ? (
-                        <Ionicons name="checkmark" size={20} color={colors.onPrimary} />
-                      ) : null}
-                      <AppText
-                        variant="label"
-                        rawColor={active ? colors.onPrimary : colors.textSecondary}>
-                        {f.label}
-                      </AppText>
-                      <View
-                        style={[
-                          styles.filterCount,
-                          {
-                            backgroundColor: active
-                              ? 'rgba(255,255,255,0.22)'
-                              : colors.background,
-                          },
-                        ]}>
-                        <AppText
-                          variant="caption"
-                          rawColor={active ? colors.onPrimary : colors.textSecondary}>
-                          {jumlah}
-                        </AppText>
-                      </View>
-                    </Pressable>
+                    />
                   );
                 })}
               </ScrollView>
@@ -473,6 +449,15 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginTop: Spacing.xs,
   },
+  modeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+  },
   summary: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -497,23 +482,6 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     paddingVertical: Spacing.xs,
     paddingRight: Spacing.lg,
-  },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs + 2,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: Radius.pill,
-    borderWidth: 2,
-    minHeight: Touch.comfortable - 4,
-  },
-  filterCount: {
-    minWidth: 28,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   adminReport: {
     gap: Spacing.sm,

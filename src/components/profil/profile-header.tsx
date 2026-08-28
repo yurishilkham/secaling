@@ -57,7 +57,8 @@ export function ProfileHeaderCard({ name, dusun, phone, role }: Props) {
               styles.badge,
               {
                 backgroundColor: isAdmin ? colors.primarySoft : colors.background,
-                borderColor: isAdmin ? colors.primaryText : colors.border,
+                borderColor: isAdmin ? colors.borderStrong : colors.border,
+                borderWidth: isAdmin ? 2 : 1.5,
               },
             ]}>
             <Ionicons
