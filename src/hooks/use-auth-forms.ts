@@ -200,8 +200,10 @@ export function useEmailChange(session: Session | null) {
           startCooldown(EMAIL_COOLDOWN_SECONDS);
           setStatus({
             kind: 'error',
+            // Batas email dihitung per jam, bukan per menit. Menyebut "satu
+            // menit" membuat warga mencoba lagi terlalu cepat lalu gagal lagi.
             message:
-              'Sudah terlalu sering mengirim permintaan. Tunggu satu menit, lalu coba lagi.',
+              'Sudah terlalu sering mengirim permintaan. Email dibatasi jumlahnya per jam — coba lagi nanti.',
           });
           return false;
         }
@@ -341,6 +343,8 @@ export function usePasswordChange(session: Session | null) {
         if (isRateLimit(passError)) {
           setStatus({
             kind: 'error',
+            // Ganti kata sandi tidak mengirim email, jadi batas di sini per
+            // menit — beda dari batas email. Pesannya sengaja tidak disamakan.
             message: 'Sudah terlalu sering mencoba. Tunggu satu menit, lalu coba lagi.',
           });
           return false;

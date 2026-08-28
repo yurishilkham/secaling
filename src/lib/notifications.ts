@@ -106,12 +106,15 @@ let tokenTerakhir: string | null = null;
 /**
  * Daftarkan perangkat ini supaya bisa menerima peringatan keamanan desa.
  *
+ * Tidak butuh akun. Warga yang belum login tetap terdaftar dengan `user_id`
+ * kosong; kalau ia login nanti, tokennya diklaim atas namanya.
+ *
  * Aman dipanggil berulang: `register_push_token` di Supabase memakai upsert,
  * jadi memanggilnya dua kali tidak membuat baris ganda.
  *
- * `user_id` tidak diteruskan sebagai argumen — fungsi di Supabase mengambilnya
- * dari `auth.uid()`. Kalau dikirim dari klien, warga bisa mendaftarkan token
- * atas nama orang lain.
+ * `user_id` tidak pernah diteruskan sebagai argumen — fungsi di Supabase
+ * mengambilnya dari `auth.uid()`. Kalau dikirim dari klien, warga bisa
+ * mendaftarkan token atas nama orang lain.
  */
 export async function registerForPushNotificationsAsync(): Promise<PushSetupResult> {
   ensureHandler();
@@ -188,8 +191,8 @@ export async function registerForPushNotificationsAsync(): Promise<PushSetupResu
    * INSERT kalau belum. Itu rusak kalau satu HP dipakai dua akun: policy SELECT
    * hanya mengizinkan membaca token milik sendiri, jadi pemeriksaannya tidak
    * menemukan apa-apa, lalu INSERT-nya kena unique violation pada kolom `token`.
-   * `register_push_token` melakukan upsert di sisi server dan memindahkan token
-   * ke akun yang terakhir masuk di perangkat itu.
+   * `register_push_token` melakukan upsert di sisi server, dan bisa dipanggil
+   * baik oleh warga yang sudah login maupun yang belum.
    */
   const { error } = await supabase.rpc('register_push_token', { p_token: token });
   if (error) {
@@ -201,16 +204,36 @@ export async function registerForPushNotificationsAsync(): Promise<PushSetupResu
   return { ok: true, token };
 }
 
+/**
+ * Lepas kaitan token ini dari akun warga saat ia menekan "Keluar".
+ *
+ * Barisnya TIDAK dihapus, hanya `user_id`-nya dilepas — perangkatnya tetap
+ * menerima peringatan keamanan desa sebagai warga anonim. Menghapusnya berarti
+ * warga yang keluar dari akun ikut berhenti diberi tahu saat ada maling atau
+ * kebakaran, dan itu bukan yang diinginkan.
+ *
+ * Dikerjakan lewat DELETE lalu daftar ulang karena policy UPDATE tidak ada:
+ * membuka UPDATE pada tabel ini berarti siapa pun yang tahu token orang lain
+ * bisa mengklaimnya.
+ */
 export async function unregisterPushNotifications(token?: string | null) {
   const target = token ?? tokenTerakhir;
   if (!target) return;
 
   const { error } = await supabase.from('push_tokens').delete().eq('token', target);
   if (error) {
-    catat('gagal menghapus token saat keluar', error.message);
+    catat('gagal melepas token saat keluar', error.message);
     return;
   }
-  if (target === tokenTerakhir) tokenTerakhir = null;
+
+  // Daftar ulang tanpa sesi supaya perangkat ini tetap menerima peringatan.
+  const { error: ulangErr } = await supabase.rpc('register_push_token', {
+    p_token: target,
+  });
+  if (ulangErr) {
+    catat('gagal mendaftar ulang sebagai anonim setelah keluar', ulangErr.message);
+    tokenTerakhir = null;
+  }
 }
 
 export function useNotificationTap(onTap: (url: string) => void) {
@@ -241,27 +264,33 @@ export function useNotificationTap(onTap: (url: string) => void) {
 }
 
 /**
- * Daftarkan perangkat begitu warga punya sesi, di mana pun ia berada di app.
+ * Daftarkan perangkat ini untuk menerima peringatan keamanan desa.
  *
- * Dipasang di root layout, BUKAN di tab Profil seperti sebelumnya. Versi lama
- * hanya mendaftar saat tab Profil dibuka — padahal sebagian besar warga tidak
- * pernah membukanya. Mereka tidak akan pernah menerima peringatan keamanan,
- * yang justru inti dari app ini.
+ * TIDAK menunggu warga login. Di desa, tidak semua warga mau atau bisa membuat
+ * akun — tapi peringatan maling dan kebakaran justru paling perlu sampai ke
+ * mereka. Mewajibkan akun berarti membiarkan sebagian warga tidak tahu apa-apa
+ * saat ada kejadian.
  *
- * Aman dijalankan berulang: sudah dijaga `sudahCoba` supaya tidak mengulang
- * untuk userId yang sama, dan RPC-nya sendiri idempoten.
+ * Dipasang di root layout, bukan di tab Profil seperti versi paling awal, yang
+ * hanya mendaftar kalau tab itu dibuka.
+ *
+ * Dijalankan dua kali dengan sengaja:
+ *   1. sekali saat app dibuka, tanpa menunggu apa pun
+ *   2. sekali lagi kalau ternyata warga punya sesi, supaya tokennya diklaim
+ *      atas namanya dan notifikasi bertarget tetap mungkin
+ *
+ * `register_push_token` idempoten, jadi panggilan kedua tidak membuat baris
+ * ganda — hanya mengisi `user_id` yang tadinya kosong.
  */
 export function usePushRegistration(userId: string | undefined) {
+  // Menyimpan siapa yang terakhir didaftarkan. `'__anon__'` dibedakan dari
+  // `null` supaya pendaftaran anonim tidak diulang tiap kali komponen render.
   const sudahCoba = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!userId) {
-      // Ganti akun atau keluar: izinkan pendaftaran ulang untuk akun berikutnya.
-      sudahCoba.current = null;
-      return;
-    }
-    if (sudahCoba.current === userId) return;
-    sudahCoba.current = userId;
+    const penanda = userId ?? '__anon__';
+    if (sudahCoba.current === penanda) return;
+    sudahCoba.current = penanda;
 
     let dibatalkan = false;
     registerForPushNotificationsAsync().then((hasil) => {

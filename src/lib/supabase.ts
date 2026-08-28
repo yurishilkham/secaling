@@ -38,3 +38,26 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     flowType: 'pkce',
   },
 });
+
+/**
+ * Pilihan kolom untuk mengambil laporan beserta nama pelapornya.
+ *
+ * Nama foreign key HARUS disebut. Ada dua jalur dari `reports` ke `profiles`:
+ *
+ *   1. langsung          reports.reporter_id -> profiles.id   (siapa yang melapor)
+ *   2. lewat perantara   reports -> report_confirmations -> profiles
+ *                                                          (siapa yang menekan
+ *                                                           "Saya Juga Lihat")
+ *
+ * Tanpa nama FK, Supabase tidak tahu jalur mana yang dimaksud dan menolak
+ * seluruh kueri dengan PGRST201 — bukan sekadar peringatan, tapi kegagalan yang
+ * membuat daftar laporan tidak muncul sama sekali.
+ *
+ * Jalur kedua tidak bisa dihilangkan karena fitur "Saya Juga Lihat" memakainya,
+ * jadi menyebut nama FK adalah satu-satunya jalan.
+ *
+ * Ditaruh di satu tempat supaya kueri baru tidak lupa memakainya dan mengulang
+ * kesalahan yang sama.
+ */
+export const PILIH_LAPORAN_DENGAN_PELAPOR =
+  '*, profiles!reports_reporter_id_profiles_fkey(full_name)' as const;

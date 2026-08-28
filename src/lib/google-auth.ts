@@ -2,6 +2,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
 import { Platform } from 'react-native';
 
+import { terapkanTautanAuth } from '@/lib/auth-link';
 import { supabase } from '@/lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -80,15 +81,32 @@ export async function signInWithGoogle() {
     throw new Error('Gagal menyelesaikan login Google');
   }
 
-  // result.url contoh: secaling://auth/callback?code=xxx&sb_flow_id=yyy
-  const url = new URL(result.url);
-  const code = url.searchParams.get('code');
-  if (!code) {
-    const err = url.searchParams.get('error_description') || url.searchParams.get('error') || 'Kode autentikasi tidak ditemukan';
-    throw new Error(err);
-  }
-  const flowId = url.searchParams.get('sb_flow_id') || url.searchParams.get('flowId') || undefined;
+  /**
+   * Tukar kode menjadi sesi.
+   *
+   * KENAPA LEWAT `terapkanTautanAuth`, BUKAN `exchangeCodeForSession` LANGSUNG
+   *   Android mengirimkan `secaling://auth/callback?code=...` DUA KALI: sekali
+   *   sebagai nilai kembalian `openAuthSessionAsync` di sini, sekali lagi
+   *   sebagai deep link ke app karena skema `secaling` terdaftar di manifest
+   *   dan `MainActivity` memakai `launchMode="singleTask"`.
+   *
+   *   Kode PKCE hanya berlaku sekali pakai. Jadi salah satu dari dua penukaran
+   *   itu pasti gagal — dan yang gagal melempar error walau sesinya sudah
+   *   berhasil dibuat oleh yang lain. Itu yang membuat masuk dengan Google
+   *   terlihat gagal padahal sudah berhasil.
+   *
+   *   `terapkanTautanAuth` mengembalikan keadaan alih-alih melempar, jadi
+   *   kegagalan bisa diperiksa dulu terhadap sesi yang sebenarnya.
+   */
+  const hasil = await terapkanTautanAuth(result.url);
+  if (hasil.keadaan === 'berhasil') return;
 
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code, flowId ? { flowId } : undefined as any);
-  if (exchangeError) throw exchangeError;
+  // Kalau gagal, mungkin pendengar deep link di `AuthProvider` sudah menukarnya
+  // lebih dulu. Sesi yang ada lebih menentukan daripada error dari penukaran
+  // kedua.
+  const { data: sesi } = await supabase.auth.getSession();
+  if (sesi.session) return;
+
+  if (hasil.keadaan === 'gagal') throw hasil.error;
+  throw new Error('Kode autentikasi tidak ditemukan');
 }

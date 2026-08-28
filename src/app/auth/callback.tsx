@@ -1,7 +1,5 @@
-import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
@@ -11,104 +9,64 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Screen } from '@/components/ui/screen';
 import { Spacing } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/use-app-theme';
-import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth';
+
+/**
+ * Berapa lama menunggu sesi muncul sebelum menyerah.
+ *
+ * Penukaran token terjadi di `AuthProvider`, dan butuh sekali jalan ke server.
+ * Tanpa batas waktu, warga yang tautannya gagal akan menatap pemuat selamanya —
+ * persis gejala layar putih yang dilaporkan.
+ */
+const BATAS_TUNGGU_MS = 12000;
 
 /**
  * Layar transisi setelah warga menekan tautan dari email atau menyelesaikan
  * masuk dengan Google.
  *
- * Perubahan: pesan gagal dulu menampilkan `error.message` mentah dari Supabase
- * — teks bahasa Inggris seperti "invalid flow state, no valid flow state found"
- * di tengah layar. Sekarang lewat `ErrorState` yang menerjemahkannya, dan ada
- * tombol menuju halaman masuk supaya warga tidak terjebak di sini.
+ * LAYAR INI TIDAK LAGI MENUKAR TOKEN.
+ *
+ *   Sebelumnya layar ini DAN `AuthProvider` sama-sama mendaftarkan pendengar
+ *   tautan, lalu keduanya mencoba menukar token yang sama. Token konfirmasi
+ *   hanya berlaku sekali pakai, jadi yang berjalan kedua selalu gagal. Kalau
+ *   yang kedua itu layar ini, warga melihat "tautan tidak berlaku" padahal
+ *   sesinya sudah berhasil dibuat.
+ *
+ *   Sekarang seluruh penanganan tautan ada di satu tempat — `terapkanTautanAuth`
+ *   yang dipanggil `AuthProvider`. Layar ini hanya mengamati `session` dan
+ *   berpindah begitu sesinya ada.
  */
 export default function AuthCallbackScreen() {
   const { colors } = useAppTheme();
   const router = useRouter();
-  const [error, setError] = useState<unknown>(null);
+  const { session, loading } = useAuth();
+
+  const [habisWaktu, setHabisWaktu] = useState(false);
+  const sudahPindah = useRef(false);
+
+  // Pindah begitu sesi muncul. `replace`, supaya tombol kembali tidak
+  // mendaratkan warga di layar ini lagi.
+  useEffect(() => {
+    if (sudahPindah.current || !session) return;
+    sudahPindah.current = true;
+    router.replace('/(tabs)');
+  }, [session, router]);
 
   useEffect(() => {
-    WebBrowser.maybeCompleteAuthSession();
+    if (session) return;
 
-    const handle = async (rawUrl: string) => {
-      try {
-        const parsed = new URL(rawUrl);
-        const code = parsed.searchParams.get('code');
-        const flowId = parsed.searchParams.get('sb_flow_id') || undefined;
-        const tokenHash = parsed.searchParams.get('token_hash');
-        const type = parsed.searchParams.get('type');
+    const timer = setTimeout(() => {
+      if (!sudahPindah.current) setHabisWaktu(true);
+    }, BATAS_TUNGGU_MS);
 
-        // Jalur ganti email dan pemulihan kata sandi.
-        if (tokenHash && type) {
-          const { error: verifyError } = await supabase.auth.verifyOtp({
-            token_hash: tokenHash,
-            type: type as never,
-          });
-          if (verifyError) {
-            setError(verifyError);
-            return;
-          }
-          if (typeof window !== 'undefined' && window.history?.replaceState) {
-            parsed.searchParams.delete('token_hash');
-            parsed.searchParams.delete('type');
-            window.history.replaceState({}, '', parsed.toString());
-          }
-          router.replace('/(tabs)');
-          return;
-        }
+    return () => clearTimeout(timer);
+  }, [session]);
 
-        if (!code) {
-          const { data } = await supabase.auth.getSession();
-          router.replace(data.session ? '/(tabs)' : '/auth/login');
-          return;
-        }
-
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(
-          code,
-          flowId ? { flowId } : (undefined as never),
-        );
-        if (exchangeError) {
-          setError(exchangeError);
-          return;
-        }
-
-        // Bersihkan potongan tautan di web supaya kode tidak tertinggal di
-        // riwayat peramban.
-        if (typeof window !== 'undefined' && window.history?.replaceState) {
-          parsed.searchParams.delete('code');
-          parsed.searchParams.delete('sb_flow_id');
-          window.history.replaceState({}, '', parsed.toString());
-        }
-        router.replace('/(tabs)');
-      } catch (e) {
-        setError(e);
-      }
-    };
-
-    if (typeof window !== 'undefined' && window.location?.href) {
-      handle(window.location.href);
-      return;
-    }
-
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        handle(url);
-        return;
-      }
-      supabase.auth.getSession().then(({ data }) => {
-        router.replace(data.session ? '/(tabs)' : '/auth/login');
-      });
-    });
-
-    const sub = Linking.addEventListener('url', ({ url }) => handle(url));
-    return () => sub.remove();
-  }, [router]);
-
-  if (error) {
+  if (habisWaktu && !session) {
     return (
       <Screen noTabBar center>
         <ErrorState
-          error={error}
+          error={new Error('Tautan tidak menghasilkan sesi')}
           title="Tautan tidak berhasil dibuka"
           message="Tautan ini mungkin sudah kedaluwarsa atau sudah pernah dipakai. Coba masuk seperti biasa."
         />
@@ -128,7 +86,7 @@ export default function AuthCallbackScreen() {
         <BrandLogo size={80} />
         <ActivityIndicator size="large" color={colors.primaryText} />
         <AppText variant="body" color="textSecondary" align="center">
-          Mohon tunggu sebentar…
+          {loading ? 'Mohon tunggu sebentar…' : 'Menyiapkan akun Anda…'}
         </AppText>
       </View>
     </Screen>

@@ -15,8 +15,9 @@ import { Screen } from '@/components/ui/screen';
 import { Surface } from '@/components/ui/surface';
 import { Radius, Spacing } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/use-app-theme';
+import { useJedaEmail } from '@/hooks/use-jeda-email';
 import { friendlyError } from '@/lib/errors';
-import { signInWithGoogle } from '@/lib/google-auth';
+import { getRedirectUri, signInWithGoogle } from '@/lib/google-auth';
 import { supabase } from '@/lib/supabase';
 
 type FieldErrors = {
@@ -43,8 +44,44 @@ export default function RegisterScreen() {
   );
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  /** Sedang mengirim ulang email konfirmasi. */
+  const [resending, setResending] = useState(false);
+  /** Sedang memeriksa apakah tautan konfirmasi sudah diketuk. */
+  const [checking, setChecking] = useState(false);
   /** Pendaftaran berhasil, tinggal memeriksa email. */
   const [done, setDone] = useState(false);
+
+  // Menahan tombol kirim ulang di layar tunggu supaya kuota email tidak habis.
+  const { sisa: jedaSisa, mulai: mulaiJeda, sedangMenunggu: sedangJeda } = useJedaEmail();
+
+  /**
+   * Kirim ulang email konfirmasi dari layar tunggu.
+   *
+   * Sebelumnya tombol ini hanya ada di layar masuk, jadi warga yang emailnya
+   * tidak sampai harus menebak untuk pindah ke sana dulu.
+   */
+  async function kirimUlang() {
+    if (sedangJeda) return;
+
+    setBanner(null);
+    setResending(true);
+
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.trim().toLowerCase(),
+      options: { emailRedirectTo: getRedirectUri() },
+    });
+
+    setResending(false);
+
+    if (error) {
+      setBanner({ tone: 'error', message: friendlyError(error, 'kirimUlangDaftar').message });
+      return;
+    }
+
+    mulaiJeda();
+    setBanner({ tone: 'success', message: 'Email sudah dikirim ulang.' });
+  }
 
   function clearError(key: keyof FieldErrors) {
     setErrors((p) => ({ ...p, [key]: undefined }));
@@ -77,6 +114,17 @@ export default function RegisterScreen() {
       password,
       options: {
         data: { full_name: name, dusun: dusun.trim(), phone: phone.trim() },
+        /**
+         * WAJIB ADA. Tanpa ini Supabase memakai Site URL bawaannya —
+         * `http://localhost:3000` — sebagai tujuan tautan di email. Warga yang
+         * mengetuk tautan itu di HP membuka peramban ke halaman yang tidak ada,
+         * dan akunnya tidak pernah terkonfirmasi.
+         *
+         * Dengan `secaling://auth/callback`, Android membuka Secaling langsung
+         * lewat deep link, dan `src/app/auth/callback.tsx` menyelesaikan
+         * verifikasinya.
+         */
+        emailRedirectTo: getRedirectUri(),
       },
     });
 
@@ -123,8 +171,50 @@ export default function RegisterScreen() {
       return;
     }
 
-    // Perlu memeriksa email dulu.
+    // Perlu memeriksa email dulu. Jeda dimulai supaya tombol kirim ulang di
+    // layar berikutnya tidak bisa ditekan berulang.
+    mulaiJeda();
     setDone(true);
+  }
+
+  /**
+   * Periksa apakah warga sudah mengetuk tautan konfirmasi.
+   *
+   * Menutup kasus yang sering terjadi: email dibuka di perangkat LAIN, misalnya
+   * laptop. Deep link `secaling://` hanya berlaku di HP yang memasang Secaling,
+   * jadi kalau tautannya diketuk di laptop, HP-nya tidak ikut masuk dan warga
+   * terjebak di layar tunggu tanpa jalan keluar.
+   *
+   * `signInWithPassword` dipakai, bukan `getSession`, karena akun ini belum
+   * pernah punya sesi di perangkat ini — tidak ada yang bisa diperiksa.
+   */
+  async function periksaKonfirmasi() {
+    setBanner(null);
+    setChecking(true);
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
+
+    setChecking(false);
+
+    if (!error) {
+      router.replace('/(tabs)');
+      return;
+    }
+
+    const msg = error.message.toLowerCase();
+    if (msg.includes('not confirmed') || msg.includes('email not confirmed')) {
+      setBanner({
+        tone: 'error',
+        message:
+          'Email Anda belum dikonfirmasi. Buka kotak masuk email, lalu ketuk tautan dari kami.',
+      });
+      return;
+    }
+
+    setBanner({ tone: 'error', message: friendlyError(error, 'periksaKonfirmasi').message });
   }
 
   async function handleGoogleRegister() {
@@ -135,8 +225,10 @@ export default function RegisterScreen() {
       await signInWithGoogle();
       const { data } = await supabase.auth.getSession();
       if (data.session) {
-        if (router.canGoBack()) router.back();
-        else router.replace('/(tabs)');
+        // `replace`, bukan `back()`. Dengan `back()` warga yang tiba di sini
+        // lewat layar callback justru dikembalikan ke layar itu, yang lalu diam
+        // menunggu dan tampil sebagai halaman putih.
+        router.replace('/(tabs)');
         return;
       }
       setBanner({ tone: 'error', message: 'Pendaftaran dengan Google belum selesai. Coba lagi.' });
@@ -146,6 +238,15 @@ export default function RegisterScreen() {
         setGoogleLoading(false);
         return;
       }
+
+      // Sama seperti di layar masuk: sesi yang nyata lebih menentukan daripada
+      // error dari langkah yang kalah cepat.
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        router.replace('/(tabs)');
+        return;
+      }
+
       setBanner({ tone: 'error', message: friendlyError(e, 'googleRegister').message });
     } finally {
       setGoogleLoading(false);
@@ -171,20 +272,49 @@ export default function RegisterScreen() {
               <AppText variant="bodyStrong" color="text">
                 {email.trim().toLowerCase()}
               </AppText>
-              . Buka kotak masuk email itu dan ketuk tautan dari kami, lalu
-              kembali ke sini untuk masuk.
+              . Buka kotak masuk email itu dan ketuk tautan dari kami.
             </AppText>
 
+            {banner ? (
+              <InlineBanner
+                tone={banner.tone}
+                message={banner.message}
+                onDismiss={() => setBanner(null)}
+              />
+            ) : null}
+
+            {/* Jalan keluar utama: warga yang membuka email di perangkat lain
+                (laptop, HP keluarga) tidak akan otomatis masuk di HP ini,
+                karena deep link `secaling://` hanya berlaku di perangkat yang
+                memasang Secaling. Tombol ini menutup kasus itu. */}
+            <Button
+              title="Saya Sudah Konfirmasi"
+              size="large"
+              onPress={periksaKonfirmasi}
+              loading={checking}
+              icon={
+                <Ionicons name="checkmark-circle-outline" size={24} color={colors.onPrimary} />
+              }
+              style={styles.doneBtn}
+            />
+
             <AppText variant="caption" color="textMuted" align="center" style={styles.doneText}>
-              Emailnya belum datang? Coba periksa folder spam, atau tunggu
-              beberapa menit.
+              Emailnya belum datang? Coba periksa folder spam.
             </AppText>
 
             <Button
+              title={sedangJeda ? `Kirim ulang dalam ${jedaSisa} detik` : 'Kirim Ulang Email'}
+              variant="outline"
+              onPress={kirimUlang}
+              loading={resending}
+              disabled={sedangJeda}
+              icon={<Ionicons name="mail-outline" size={22} color={colors.primaryText} />}
+            />
+
+            <Button
               title="Ke Halaman Masuk"
-              size="large"
+              variant="ghost"
               onPress={() => router.replace('/auth/login')}
-              style={styles.doneBtn}
             />
           </Surface>
         </Animated.View>

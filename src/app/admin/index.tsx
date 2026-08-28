@@ -26,7 +26,7 @@ import { useAppTheme } from '@/hooks/use-app-theme';
 import { useReportStatus } from '@/hooks/use-report-status';
 import { useAuth } from '@/lib/auth';
 import { friendlyError, type FriendlyError } from '@/lib/errors';
-import { supabase } from '@/lib/supabase';
+import { PILIH_LAPORAN_DENGAN_PELAPOR, supabase } from '@/lib/supabase';
 
 /** Apa yang sedang menunggu konfirmasi hapus. */
 type PendingDelete =
@@ -83,7 +83,7 @@ export default function AdminIndexScreen() {
     const [r, a] = await Promise.all([
       supabase
         .from('reports')
-        .select('*, profiles(full_name)')
+        .select(PILIH_LAPORAN_DENGAN_PELAPOR)
         .order('created_at', { ascending: false })
         .limit(100),
       supabase

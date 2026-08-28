@@ -15,8 +15,9 @@ import { Screen } from '@/components/ui/screen';
 import { Surface } from '@/components/ui/surface';
 import { Radius, Spacing } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/use-app-theme';
+import { useJedaEmail } from '@/hooks/use-jeda-email';
 import { friendlyError } from '@/lib/errors';
-import { signInWithGoogle } from '@/lib/google-auth';
+import { getRedirectUri, signInWithGoogle } from '@/lib/google-auth';
 import { supabase } from '@/lib/supabase';
 
 type FieldErrors = { email?: string; password?: string };
@@ -38,9 +39,21 @@ export default function LoginScreen() {
   /** Email belum diperiksa — tombol kirim ulang ditampilkan. */
   const [needsVerify, setNeedsVerify] = useState(false);
 
+  // Menahan tombol kirim ulang supaya kuota email tidak habis oleh satu orang.
+  const { sisa: jedaSisa, mulai: mulaiJeda, sedangMenunggu: sedangJeda } = useJedaEmail();
+
+  /**
+   * Masuk ke app setelah berhasil.
+   *
+   * `replace` ke Beranda, BUKAN `router.back()`.
+   *
+   * Versi sebelumnya memakai `back()` kalau riwayat masih ada. Itu bermasalah
+   * saat warga tiba di sini lewat layar `auth/callback` — `back()` justru
+   * mengembalikannya ke layar callback, yang lalu diam menunggu dan tampil
+   * sebagai halaman putih. Gejala inilah yang muncul saat masuk dengan Google.
+   */
   function goHome() {
-    if (router.canGoBack()) router.back();
-    else router.replace('/(tabs)');
+    router.replace('/(tabs)');
   }
 
   async function submit() {
@@ -118,6 +131,9 @@ export default function LoginScreen() {
     const { error } = await supabase.auth.resend({
       type: 'signup',
       email: email.trim().toLowerCase(),
+      // Sama seperti di layar daftar: tanpa ini tautannya menuju Site URL
+      // bawaan Supabase, bukan ke app.
+      options: { emailRedirectTo: getRedirectUri() },
     });
     setResending(false);
 
@@ -125,6 +141,10 @@ export default function LoginScreen() {
       setBanner({ tone: 'error', message: friendlyError(error, 'resendVerify').message });
       return;
     }
+
+    // Jeda tombolnya. Tanpa ini warga menekan berulang saat email belum sampai,
+    // dan kuota email harian habis oleh satu orang.
+    mulaiJeda();
     setBanner({
       tone: 'success',
       message: 'Sudah kami kirim ulang. Buka kotak masuk email Anda.',
@@ -154,6 +174,21 @@ export default function LoginScreen() {
         setGoogleLoading(false);
         return;
       }
+
+      /**
+       * Periksa sesi dulu sebelum menampilkan kegagalan.
+       *
+       * Jaring terakhir: kalau ternyata sesinya sudah ada, masuknya BERHASIL
+       * dan errornya datang dari langkah yang kalah cepat. Menampilkan pesan
+       * gagal di keadaan itu membuat warga menekan tombol berulang padahal
+       * sudah masuk.
+       */
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        goHome();
+        return;
+      }
+
       setBanner({ tone: 'error', message: friendlyError(e, 'googleLogin').message });
     } finally {
       setGoogleLoading(false);
@@ -225,10 +260,11 @@ export default function LoginScreen() {
 
           {needsVerify ? (
             <Button
-              title="Kirim Ulang Email"
+              title={sedangJeda ? `Tunggu ${jedaSisa} detik` : 'Kirim Ulang Email'}
               variant="outline"
               onPress={resendVerification}
               loading={resending}
+              disabled={sedangJeda}
               icon={<Ionicons name="mail-outline" size={22} color={colors.primaryText} />}
             />
           ) : null}

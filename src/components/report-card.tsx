@@ -16,6 +16,7 @@ import { Radius, Spacing, Springs, Touch } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { useCategory } from '@/hooks/use-category';
 import { timeAgo } from '@/lib/format';
+import { urlGambar } from '@/lib/image-url';
 import { buildReportMessage, shareToWhatsApp } from '@/lib/share';
 
 export type { ReportStatus };
@@ -156,7 +157,7 @@ export function ReportCard({
 
           {report.photo_url ? (
             <Image
-              source={{ uri: report.photo_url }}
+              source={{ uri: urlGambar(report.photo_url) }}
               style={[styles.thumb, { backgroundColor: colors.skeleton }]}
               contentFit="cover"
               transition={180}

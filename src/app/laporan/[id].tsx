@@ -30,8 +30,9 @@ import { useReportStatus } from '@/hooks/use-report-status';
 import { useAuth } from '@/lib/auth';
 import { friendlyError, type FriendlyError } from '@/lib/errors';
 import { formatDateTime, timeAgo } from '@/lib/format';
+import { urlGambar } from '@/lib/image-url';
 import { buildReportMessage, shareToWhatsApp } from '@/lib/share';
-import { supabase } from '@/lib/supabase';
+import { PILIH_LAPORAN_DENGAN_PELAPOR, supabase } from '@/lib/supabase';
 
 /**
  * Tiga keadaan yang bisa terjadi setelah memuat, dan dulu tercampur jadi satu.
@@ -89,7 +90,7 @@ export default function ReportDetailScreen() {
 
     const { data, error } = await supabase
       .from('reports')
-      .select('*, profiles(full_name)')
+      .select(PILIH_LAPORAN_DENGAN_PELAPOR)
       .eq('id', id)
       .maybeSingle();
 
@@ -270,7 +271,7 @@ export default function ReportDetailScreen() {
             accessibilityLabel="Lihat foto ukuran penuh"
             style={({ pressed }) => [styles.photoPress, { opacity: pressed ? 0.9 : 1 }]}>
             <Image
-              source={{ uri: report.photo_url }}
+              source={{ uri: urlGambar(report.photo_url) }}
               style={[styles.photo, { backgroundColor: colors.skeleton }]}
               contentFit="cover"
               transition={200}

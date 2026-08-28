@@ -124,6 +124,7 @@ function RootLayoutInner() {
           <Stack.Screen name="admin/index" />
           <Stack.Screen name="admin/pengumuman-baru" />
           <Stack.Screen name="admin/pengaturan" />
+          <Stack.Screen name="+not-found" />
         </Stack>
         <StatusBar style={resolved === 'dark' ? 'light' : 'dark'} />
       </AuthProvider>

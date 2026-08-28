@@ -40,6 +40,19 @@ yarn-error.*
 google-services.json
 GoogleService-Info.plist
 
+# Kunci privat service account Firebase (dipakai EAS untuk MENGIRIM notifikasi).
+# Ini rahasia sungguhan: siapa pun yang punya berkas ini bisa mengakses
+# project Firebase desa.
+*-firebase-adminsdk-*.json
+
+# Keystore penandatanganan APK.
+# Kalau ini hilang, TIDAK ADA cara mengirim pembaruan ke APK yang sudah
+# terpasang di HP warga — mereka harus hapus dan pasang ulang. Simpan salinannya
+# di luar laptop (Drive, flashdisk), bukan hanya di sini.
+*.jks
+*.keystore
+!android/app/debug.keystore
+
 # typescript
 *.tsbuildinfo
 

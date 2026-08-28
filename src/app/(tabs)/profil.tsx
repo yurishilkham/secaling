@@ -106,9 +106,13 @@ export default function ProfilScreen() {
 
   async function handleSignOut() {
     setAskSignOut(false);
-    // Tanpa argumen: `unregisterPushNotifications` memakai token yang dicatat
-    // saat pendaftaran di root layout. Layar ini tidak lagi menyimpannya
-    // sendiri karena bukan dia yang mendaftarkan.
+    // Melepas kaitan token dari akun, BUKAN menghapusnya. HP ini tetap
+    // menerima peringatan keamanan desa sebagai warga anonim — keluar dari
+    // akun tidak berarti ingin berhenti diberi tahu saat ada kejadian.
+    //
+    // Tanpa argumen: memakai token yang dicatat saat pendaftaran di root
+    // layout. Layar ini tidak menyimpannya sendiri karena bukan dia yang
+    // mendaftarkan.
     await unregisterPushNotifications();
     await signOut();
   }

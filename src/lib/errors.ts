@@ -25,9 +25,25 @@ export type FriendlyError = {
   retryable: boolean;
 };
 
+/**
+ * Pesan untuk error yang tidak dikenali aturan mana pun.
+ *
+ * SENGAJA TIDAK MENYEBUT INTERNET.
+ *
+ *   Versi sebelumnya berbunyi "Sambungan internet sepertinya sedang
+ *   bermasalah". Karena pesan ini dipakai untuk SEMUA error tak dikenali, warga
+ *   jadi dituduhi masalah sinyal untuk hal yang sama sekali bukan soal
+ *   jaringan. Itu benar-benar terjadi pada kegagalan masuk dengan Google —
+ *   internetnya baik, masuknya bahkan sudah berhasil, tapi pesannya menyuruh
+ *   warga memeriksa sinyal.
+ *
+ *   Kasus jaringan yang sungguhan punya aturannya sendiri di `RULES` di bawah,
+ *   yang mencocokkan `network request failed` dan sejenisnya. Jadi tidak ada
+ *   yang hilang dengan mengubah pesan ini.
+ */
 const GENERIC: FriendlyError = {
   title: 'Ada gangguan',
-  message: 'Sambungan internet sepertinya sedang bermasalah. Coba lagi sebentar.',
+  message: 'Ada gangguan sebentar. Coba ulangi sekali lagi.',
   retryable: true,
 };
 
@@ -81,6 +97,31 @@ const RULES: Rule[] = [
   },
 
   // --- Masuk / daftar ---
+  {
+    /**
+     * Kegagalan alur PKCE, terutama saat masuk dengan Google.
+     *
+     * Sebelumnya tidak ada aturan untuk ini, jadi warga membaca pesan cadangan
+     * "Sambungan internet sepertinya bermasalah" — padahal internetnya baik dan
+     * seringnya masuknya SUDAH berhasil. Terlihat di HP uji: sesi tercatat di
+     * server, error muncul 296 milidetik setelahnya.
+     *
+     * Penukaran ganda sudah dicegah di `auth-link.ts`, tapi aturan ini tetap
+     * perlu untuk kasus tautan kedaluwarsa atau app ditutup di tengah alur.
+     */
+    match: (m, c) =>
+      c.includes('flow_state') ||
+      m.includes('flow state') ||
+      m.includes('code verifier') ||
+      m.includes('code challenge') ||
+      m.includes('pkce'),
+    result: {
+      title: 'Masuk belum selesai',
+      message:
+        'Proses masuk terputus di tengah jalan. Coba tekan tombol masuk sekali lagi.',
+      retryable: true,
+    },
+  },
   {
     match: (m) => m.includes('invalid login credentials') || m.includes('invalid credentials'),
     result: {
@@ -156,7 +197,14 @@ const RULES: Rule[] = [
       m.includes('over_email'),
     result: {
       title: 'Terlalu sering mencoba',
-      message: 'Kami membatasi pengiriman email supaya tidak disalahgunakan. Tunggu 1 menit, lalu coba lagi.',
+      /**
+       * Sebelumnya pesan ini berbunyi "Tunggu 1 menit". Itu salah dan menyesatkan:
+       * batas pengiriman email dihitung per JAM, bukan per menit. Warga yang
+       * menunggu satu menit lalu mencoba lagi akan gagal lagi, dan menyimpulkan
+       * app-nya rusak.
+       */
+      message:
+        'Email dari kami dibatasi jumlahnya per jam supaya tidak disalahgunakan. Coba lagi nanti, atau masuk memakai akun Google.',
       retryable: true,
     },
   },

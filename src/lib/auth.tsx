@@ -2,6 +2,7 @@ import { Session } from '@supabase/supabase-js';
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import * as Linking from 'expo-linking';
 
+import { terapkanTautanAuth } from '@/lib/auth-link';
 import { supabase } from '@/lib/supabase';
 
 export type Profile = {
@@ -41,35 +42,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Handle deep-link callback secaling://auth/callback?code=... untuk PKCE (native) + token_hash untuk email_change
+  /**
+   * Bangun sesi dari tautan yang membuka app.
+   *
+   * Dipasang di SINI, bukan di `auth/callback.tsx`. Sebelumnya keduanya
+   * mendaftarkan pendengar tautan dan sama-sama mencoba menukar token yang
+   * sama — token konfirmasi hanya berlaku sekali pakai, jadi yang berjalan
+   * kedua selalu gagal.
+   *
+   * Semua bentuk tautan (fragment, token_hash, kode PKCE) ditangani di
+   * `terapkanTautanAuth`. Perubahan sesinya sampai ke sini lewat
+   * `onAuthStateChange` di atas.
+   */
   useEffect(() => {
-    const handleUrl = async (url: string) => {
-      try {
-        const parsed = Linking.parse(url);
-        // PKCE code flow
-        const code = (parsed.queryParams?.code as string) || new URL(url).searchParams.get('code');
-        const flowId = (parsed.queryParams?.sb_flow_id as string) || new URL(url).searchParams.get('sb_flow_id') || undefined;
-        if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code, flowId ? { flowId } : undefined as any);
-          if (error) console.warn('exchangeCodeForSession error:', error.message);
-          return;
-        }
-        // Fallback token_hash flow (email_change, recovery)
-        const tokenHash = (parsed.queryParams?.token_hash as string) || new URL(url).searchParams.get('token_hash');
-        const type = (parsed.queryParams?.type as string) || new URL(url).searchParams.get('type');
-        if (tokenHash && type) {
-          const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: type as any });
-          if (error) console.warn('verifyOtp error:', error.message);
-        }
-      } catch (e) {
-        console.warn('handleUrl error', e);
-      }
-    };
-
     Linking.getInitialURL().then((url) => {
-      if (url) handleUrl(url);
+      if (url) terapkanTautanAuth(url);
     });
-    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      terapkanTautanAuth(url);
+    });
     return () => sub.remove();
   }, []);
 

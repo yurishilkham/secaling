@@ -7,6 +7,7 @@ import { AppText } from '@/components/ui/app-text';
 import { IconButton } from '@/components/ui/icon-button';
 import { Spacing } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/use-app-theme';
+import { urlGambar } from '@/lib/image-url';
 
 type Props = {
   visible: boolean;
@@ -51,7 +52,7 @@ export function PhotoViewer({ visible, uri, onClose }: Props) {
         />
 
         <Image
-          source={{ uri }}
+          source={{ uri: urlGambar(uri) }}
           style={styles.image}
           contentFit="contain"
           transition={180}
