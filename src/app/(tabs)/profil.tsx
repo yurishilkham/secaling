@@ -2,10 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
-import { AdminMenuCard } from '@/components/profil/admin-menu-card';
 import { AppearanceCard } from '@/components/profil/appearance-card';
 import { ProfileHeaderCard } from '@/components/profil/profile-header';
 import { SecurityAccordion } from '@/components/profil/security-accordion';
@@ -46,6 +45,11 @@ export default function ProfilScreen() {
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Tab di atas "Profil Saya" — hanya terlihat kalau admin (3 orang).
+  // "Utama" = profil warga biasa, "Admin" = pintasan ke Menu Admin tanpa
+  // harus lewat kartu Perangkat Desa yang lama.
+  const [profilTab, setProfilTab] = useState<'utama' | 'admin'>('utama');
 
   const emailForm = useEmailChange(session);
   const passForm = usePasswordChange(session);
@@ -210,8 +214,60 @@ export default function ProfilScreen() {
     );
   }
 
+  const isAdmin = profile.role === 'admin';
+
   return (
     <Screen>
+      {/* Tab di ATAS "Profil Saya" — sesuai permintaan: Utama / Admin */}
+      {isAdmin ? (
+        <View style={[styles.tabRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
+          <Pressable
+            onPress={() => {
+              try { Haptics.selectionAsync(); } catch {}
+              setProfilTab('utama');
+            }}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: profilTab === 'utama' }}
+            style={[
+              styles.tabItem,
+              profilTab === 'utama'
+                ? { backgroundColor: colors.card, borderColor: colors.primary, borderWidth: 2 }
+                : { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 2 },
+            ]}>
+            <Ionicons
+              name={profilTab === 'utama' ? 'person' : 'person-outline'}
+              size={18}
+              color={profilTab === 'utama' ? colors.primaryText : colors.textMuted}
+            />
+            <AppText variant="label" color={profilTab === 'utama' ? 'primary' : 'textMuted'}>
+              Utama
+            </AppText>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              try { Haptics.selectionAsync(); } catch {}
+              setProfilTab('admin');
+            }}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: profilTab === 'admin' }}
+            style={[
+              styles.tabItem,
+              profilTab === 'admin'
+                ? { backgroundColor: colors.card, borderColor: colors.primary, borderWidth: 2 }
+                : { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 2 },
+            ]}>
+            <Ionicons
+              name={profilTab === 'admin' ? 'shield-checkmark' : 'shield-checkmark-outline'}
+              size={18}
+              color={profilTab === 'admin' ? colors.primaryText : colors.textMuted}
+            />
+            <AppText variant="label" color={profilTab === 'admin' ? 'primary' : 'textMuted'}>
+              Admin
+            </AppText>
+          </Pressable>
+        </View>
+      ) : null}
+
       <Animated.View entering={FadeIn.duration(320)} style={styles.header}>
         <AppText variant="title" color="text" heading>
           Profil Saya
@@ -236,110 +292,153 @@ export default function ProfilScreen() {
         />
       ) : null}
 
-      <Animated.View entering={FadeInDown.delay(90).duration(320)}>
-        <Surface tone="card" radius={Radius.lg} style={styles.formCard}>
-          <View style={styles.sectionHead}>
-            <AppText variant="heading" color="text" heading>
-              Data Diri
+      {/* TAB UTAMA — profil warga seperti biasa */}
+      {profilTab === 'utama' || !isAdmin ? (
+        <>
+          <Animated.View entering={FadeInDown.delay(90).duration(320)}>
+            <Surface tone="card" radius={Radius.lg} style={styles.formCard}>
+              <View style={styles.sectionHead}>
+                <AppText variant="heading" color="text" heading>
+                  Data Diri
+                </AppText>
+                <AppText variant="caption" color="textMuted">
+                  Ubah kalau ada yang perlu diperbarui
+                </AppText>
+              </View>
+
+              <Input
+                label="Nama lengkap"
+                required
+                value={fullName}
+                onChangeText={(v) => {
+                  setFullName(v);
+                  setNameError(null);
+                }}
+                error={nameError}
+                maxLength={80}
+                autoComplete="name"
+              />
+              <Input
+                label="Dusun atau RT"
+                placeholder="Contoh: Dusun Krajan RT 02"
+                value={dusun}
+                onChangeText={setDusun}
+                maxLength={60}
+              />
+              <Input
+                label="Nomor HP"
+                placeholder="08xxxxxxxxxx"
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+                maxLength={16}
+                autoComplete="tel"
+              />
+              <Button
+                title="Simpan Perubahan"
+                onPress={saveProfile}
+                loading={saving}
+                variant="outline"
+              />
+            </Surface>
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.delay(150).duration(320)}>
+            <AppearanceCard />
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.delay(180).duration(320)}>
+            <SecurityAccordion
+              email={session.user.email ?? ''}
+              emailConfirmed={!!session.user.email_confirmed_at}
+              newEmail={newEmail}
+              setNewEmail={setNewEmail}
+              onChangeEmail={() => emailForm.changeEmail(newEmail, () => setNewEmail(''))}
+              emailLoading={emailForm.emailLoading}
+              emailCooldown={emailForm.emailCooldown}
+              emailStatus={emailForm.emailStatus}
+              emailFieldError={emailForm.emailFieldError}
+              newPassword={newPassword}
+              setNewPassword={setNewPassword}
+              confirmPassword={confirmPassword}
+              setConfirmPassword={setConfirmPassword}
+              onChangePassword={() =>
+                passForm.changePassword(newPassword, confirmPassword, () => {
+                  setNewPassword('');
+                  setConfirmPassword('');
+                })
+              }
+              passLoading={passForm.passLoading}
+              passStatus={passForm.passStatus}
+              passFieldErrors={passForm.passFieldErrors}
+              onDismissStatus={() => {
+                emailForm.resetEmailStatus();
+                passForm.resetPassStatus();
+              }}
+            />
+          </Animated.View>
+
+          <Button
+            title="Keluar dari Akun"
+            variant="danger"
+            onPress={() => setAskSignOut(true)}
+            icon={<Ionicons name="log-out-outline" size={22} color={colors.danger} />}
+          />
+
+          <View style={styles.footer}>
+            <AppText variant="caption" color="textMuted" align="center">
+              Secaling — Keamanan Desa Segoropuro
             </AppText>
-            <AppText variant="caption" color="textMuted">
-              Ubah kalau ada yang perlu diperbarui
+            <AppText variant="caption" color="textMuted" align="center">
+              Dibuat oleh KKN UNIWARA, Universitas PGRI Wiranegara
             </AppText>
           </View>
-
-          <Input
-            label="Nama lengkap"
-            required
-            value={fullName}
-            onChangeText={(v) => {
-              setFullName(v);
-              setNameError(null);
-            }}
-            error={nameError}
-            maxLength={80}
-            autoComplete="name"
-          />
-          <Input
-            label="Dusun atau RT"
-            placeholder="Contoh: Dusun Krajan RT 02"
-            value={dusun}
-            onChangeText={setDusun}
-            maxLength={60}
-          />
-          <Input
-            label="Nomor HP"
-            placeholder="08xxxxxxxxxx"
-            value={phone}
-            onChangeText={setPhone}
-            keyboardType="phone-pad"
-            maxLength={16}
-            autoComplete="tel"
-          />
-          <Button
-            title="Simpan Perubahan"
-            onPress={saveProfile}
-            loading={saving}
-            variant="outline"
-          />
-        </Surface>
-      </Animated.View>
-
-      {profile.role === 'admin' ? (
-        <Animated.View entering={FadeInDown.delay(120).duration(320)}>
-          <AdminMenuCard />
-        </Animated.View>
+        </>
       ) : null}
 
-      <Animated.View entering={FadeInDown.delay(150).duration(320)}>
-        <AppearanceCard />
-      </Animated.View>
+      {/* TAB ADMIN — pintasan perangkat desa, tanpa kartu Perangkat Desa lagi */}
+      {isAdmin && profilTab === 'admin' ? (
+        <>
+          <Animated.View entering={FadeInDown.delay(90).duration(320)}>
+            <Surface tone="card" radius={Radius.lg} style={styles.adminCard}>
+              <View style={styles.adminHead}>
+                <View style={[styles.adminIcon, { backgroundColor: colors.primarySoft }]}>
+                  <Ionicons name="shield-checkmark" size={24} color={colors.primaryText} />
+                </View>
+                <View style={styles.adminHeadText}>
+                  <AppText variant="heading" color="text" heading>
+                    Perangkat Desa
+                  </AppText>
+                  <AppText variant="caption" color="textMuted">
+                    Kelola laporan dan pengumuman
+                  </AppText>
+                </View>
+              </View>
+              <Button
+                title="Buka Menu Admin"
+                size="large"
+                onPress={() => router.push('/admin')}
+                icon={<Ionicons name="shield-checkmark-outline" size={22} color={colors.onPrimary} />}
+              />
+              <Button
+                title="Tulis Pengumuman"
+                variant="outline"
+                onPress={() => router.push('/admin/pengumuman-baru')}
+                icon={<Ionicons name="create-outline" size={22} color={colors.primaryText} />}
+              />
+            </Surface>
+          </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(180).duration(320)}>
-        <SecurityAccordion
-          email={session.user.email ?? ''}
-          emailConfirmed={!!session.user.email_confirmed_at}
-          newEmail={newEmail}
-          setNewEmail={setNewEmail}
-          onChangeEmail={() => emailForm.changeEmail(newEmail, () => setNewEmail(''))}
-          emailLoading={emailForm.emailLoading}
-          emailCooldown={emailForm.emailCooldown}
-          emailStatus={emailForm.emailStatus}
-          emailFieldError={emailForm.emailFieldError}
-          newPassword={newPassword}
-          setNewPassword={setNewPassword}
-          confirmPassword={confirmPassword}
-          setConfirmPassword={setConfirmPassword}
-          onChangePassword={() =>
-            passForm.changePassword(newPassword, confirmPassword, () => {
-              setNewPassword('');
-              setConfirmPassword('');
-            })
-          }
-          passLoading={passForm.passLoading}
-          passStatus={passForm.passStatus}
-          passFieldErrors={passForm.passFieldErrors}
-          onDismissStatus={() => {
-            emailForm.resetEmailStatus();
-            passForm.resetPassStatus();
-          }}
-        />
-      </Animated.View>
-
-      <Button
-        title="Keluar dari Akun"
-        variant="danger"
-        onPress={() => setAskSignOut(true)}
-        icon={<Ionicons name="log-out-outline" size={22} color={colors.danger} />}
-      />
-
-      <View style={styles.footer}>
-        <AppText variant="caption" color="textMuted" align="center">
-          Secaling — Keamanan Desa Segoropuro
-        </AppText>
-        <AppText variant="caption" color="textMuted" align="center">
-          Dibuat oleh KKN UNIWARA, Universitas PGRI Wiranegara
-        </AppText>
-      </View>
+          <View style={styles.footer}>
+            <AppText variant="caption" color="textMuted" align="center">
+              Secaling — Keamanan Desa Segoropuro
+            </AppText>
+            <AppText variant="caption" color="textMuted" align="center">
+              Dibuat oleh KKN UNIWARA, Universitas PGRI Wiranegara
+            </AppText>
+          </View>
+        </>
+      ) : null}
 
       <ConfirmSheet
         visible={askSignOut}
@@ -365,11 +464,48 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
     marginTop: Spacing.xs,
   },
+  tabRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    padding: Spacing.xs,
+    borderRadius: Radius.pill,
+    borderWidth: 1.5,
+    marginTop: Spacing.xs,
+  },
+  tabItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.pill,
+  },
   formCard: {
     padding: Spacing.lg,
     gap: Spacing.lg,
   },
   sectionHead: {
+    gap: 2,
+  },
+  adminCard: {
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  adminHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  adminIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adminHeadText: {
+    flex: 1,
     gap: 2,
   },
   footer: {
