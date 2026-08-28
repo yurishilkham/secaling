@@ -12,7 +12,9 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo } from 'react';
 
+import { MandatoryUpdateScreen } from '@/components/mandatory-update-screen';
 import { AppThemeProvider, useAppTheme } from '@/hooks/use-app-theme';
+import { MandatoryUpdateProvider, useMandatoryUpdate } from '@/hooks/use-mandatory-update';
 import { OnboardingProvider, useOnboarding } from '@/hooks/use-onboarding';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { useNotificationTap, usePushRegistration } from '@/lib/notifications';
@@ -40,6 +42,8 @@ function RootLayoutInner() {
   const segments = useSegments();
   const { resolved, colors, ready } = useAppTheme();
   const { sudahSelesai } = useOnboarding();
+  const { loading: updateLoading, needsUpdate, updateUrl, message, remoteVersion, localVersion } =
+    useMandatoryUpdate();
 
   /**
    * Font di-embed lewat plugin `expo-font` di app.json, jadi di HP sudah
@@ -81,11 +85,30 @@ function RootLayoutInner() {
   }, [resolved, colors]);
 
   const canShow = ready && sudahSelesai !== null && (iconsLoaded || !!iconsError);
+  // Tahan splash sampai cek wajib update selesai — Fase 1: updateLoading cepat,
+  // fail-open kalau tabel belum ada / offline, jadi nggak bikin splash lama.
+  const canHideSplash = canShow && !updateLoading;
   useEffect(() => {
-    if (canShow) SplashScreen.hideAsync().catch(() => {});
-  }, [canShow]);
+    if (canHideSplash) SplashScreen.hideAsync().catch(() => {});
+  }, [canHideSplash]);
 
-  if (!canShow) return null;
+  if (!canShow || updateLoading) return null;
+
+  // Hard-block — cuma muncul kalau force_update=true + versionCode kadaluarsa.
+  // Fase 1: force_update=false → false terus, app jalan normal.
+  if (needsUpdate) {
+    return (
+      <ThemeProvider value={navTheme}>
+        <MandatoryUpdateScreen
+          updateUrl={updateUrl}
+          message={message}
+          remoteVersion={remoteVersion}
+          localVersion={localVersion}
+        />
+        <StatusBar style={resolved === 'dark' ? 'light' : 'dark'} />
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider value={navTheme}>
@@ -135,11 +158,10 @@ function RootLayoutInner() {
 export default function RootLayout() {
   return (
     <AppThemeProvider>
-      {/* `OnboardingProvider` harus membungkus SELURUH app, bukan dipanggil per
-          layar. Kalau tidak, tiap layar punya salinan keadaannya sendiri dan
-          panduan akan muncul berulang meski warga sudah menyelesaikannya. */}
       <OnboardingProvider>
-        <RootLayoutInner />
+        <MandatoryUpdateProvider>
+          <RootLayoutInner />
+        </MandatoryUpdateProvider>
       </OnboardingProvider>
     </AppThemeProvider>
   );
