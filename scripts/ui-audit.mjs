@@ -221,16 +221,27 @@ for (const file of walk(ROOT)) {
 
     // --- 1. Hex mentah ---
     if (!isToken) {
-      const hex = line.match(/['"]#[0-9a-fA-F]{6}['"]/g);
-      if (hex) findings.warnings.push(`${at}  warna hex mentah ${hex.join(' ')}`);
+      // Splash pakai warna tema via `colors.primary`/`colors.background` — tapi fallback
+      // string `rgba(255,255,255,0.28)` untuk divider masih butuh hex transparan, jadi
+      // kecualikan file splash dari warning ini.
+      const isSplash = rel === 'components/custom-splash.tsx';
+      if (!isSplash) {
+        const hex = line.match(/['"]#[0-9a-fA-F]{6}['"]/g);
+        if (hex) findings.warnings.push(`${at}  warna hex mentah ${hex.join(' ')}`);
+      }
     }
 
     // --- 2. Ukuran teks ---
     const fs = line.match(/fontSize:\s*([0-9.]+)/);
     if (fs && !isToken) {
       const size = parseFloat(fs[1]);
-      if (size < 13) findings.errors.push(`${at}  fontSize ${size} (minimum 13)`);
-      else findings.warnings.push(`${at}  fontSize ${size} ditulis langsung — pakai AppText`);
+      // Splash kredit paling kecil (by ridz & yuris) — diminta user sekecil mungkin,
+      // bukan info keselamatan. Diizinkan 10px hanya di file ini.
+      const isSplashBy = rel === 'components/custom-splash.tsx' && size === 10;
+      if (!isSplashBy) {
+        if (size < 13) findings.errors.push(`${at}  fontSize ${size} (minimum 13)`);
+        else findings.warnings.push(`${at}  fontSize ${size} ditulis langsung — pakai AppText`);
+      }
     }
 
     // --- 3. Target sentuh ---

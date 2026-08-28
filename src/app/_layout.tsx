@@ -10,8 +10,9 @@ import {
 } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
+import { CustomSplash } from '@/components/custom-splash';
 import { MandatoryUpdateScreen } from '@/components/mandatory-update-screen';
 import { AppThemeProvider, useAppTheme } from '@/hooks/use-app-theme';
 import { MandatoryUpdateProvider, useMandatoryUpdate } from '@/hooks/use-mandatory-update';
@@ -92,10 +93,20 @@ function RootLayoutInner() {
     if (canHideSplash) SplashScreen.hideAsync().catch(() => {});
   }, [canHideSplash]);
 
+  // Splash buatan — 2 logo + versi + KKN + by (bisa OTA, nggak perlu build).
+  // Native splash cuma 1 gambar, jadi yang lengkap ditampilkan di sini 1.6 detik
+  // setelah JS siap. Nggak nutupin gate wajib update di bawah.
+  const [splashDone, setSplashDone] = useState(false);
+  useEffect(() => {
+    if (!canHideSplash || needsUpdate) return;
+    const t = setTimeout(() => setSplashDone(true), 1600);
+    return () => clearTimeout(t);
+  }, [canHideSplash, needsUpdate]);
+
   if (!canShow || updateLoading) return null;
 
   // Hard-block — cuma muncul kalau force_update=true + versionCode kadaluarsa.
-  // Fase 1: force_update=false → false terus, app jalan normal.
+  // Prioritas di atas splash buatan, jadi kalau wajib update langsung blok tanpa nunggu 1.6s.
   if (needsUpdate) {
     return (
       <ThemeProvider value={navTheme}>
@@ -105,6 +116,16 @@ function RootLayoutInner() {
           remoteVersion={remoteVersion}
           localVersion={localVersion}
         />
+        <StatusBar style={resolved === 'dark' ? 'light' : 'dark'} />
+      </ThemeProvider>
+    );
+  }
+
+  // Splash buatan — ganti native yang cuma 1 logo
+  if (!splashDone) {
+    return (
+      <ThemeProvider value={navTheme}>
+        <CustomSplash />
         <StatusBar style={resolved === 'dark' ? 'light' : 'dark'} />
       </ThemeProvider>
     );
