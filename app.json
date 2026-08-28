@@ -2,7 +2,7 @@
   "expo": {
     "name": "Secaling",
     "slug": "Secaling",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "secaling",
@@ -10,7 +10,7 @@
     "backgroundColor": "#ECF2EE",
     "android": {
       "package": "com.secaling.app",
-      "versionCode": 2,
+      "versionCode": 3,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E7F5EE",

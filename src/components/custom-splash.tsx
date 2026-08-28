@@ -112,15 +112,12 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   logoSecaling: {
-    width: 72,
-    height: 72,
-    borderRadius: 18,
+    width: 76,
+    height: 76,
   },
   logoUniwara: {
-    width: 72,
-    height: 72,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    width: 60,
+    height: 60,
   },
   divider: {
     width: 1.5,
