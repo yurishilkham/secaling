@@ -1,0 +1,62 @@
+<!--
+  Subject: [Secaling] Konfirmasi email — Desa Segoropuro
+  Dashboard: Supabase > Auth > Email Templates > Confirm signup
+  Ganti seluruh isi template dengan HTML di bawah.
+  Pola resmi: {{ .ConfirmationURL }} — link dibangun GoTrue sendiri, JANGAN rakit URL verify manual.
+  Kenapa: {{ .Token }} gak cocok dengan bentuk token tersimpan GoTrue (selalu "invalid or expired"), {{ .TokenHash }} ke-render kosong di flow signup klasik.
+  {{ .ConfirmationURL }} = https (Gmail aman) + redirect_to=secaling://auth/callback dari emailRedirectTo app → 303 langsung buka APK.
+  JANGAN pakai {{ .RedirectTo }} di sini — nilainya secaling://auth/callback yang diblok Gmail.
+-->
+<!doctype html>
+<html lang="id">
+  <body style="margin:0; padding:0; background:#ECF2EE; font-family: -apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', 'Segoe UI', Roboto, sans-serif;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#ECF2EE; padding:24px 12px;">
+      <tr><td align="center">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px; background:#FFFFFF; border-radius:16px; overflow:hidden; border:1px solid #E6E9E6;">
+          <!-- Header -->
+          <tr><td style="background:#047857; padding:20px 24px; text-align:center;">
+            <div style="color:#FFFFFF; font-size:20px; font-weight:800; letter-spacing:-0.3px;">Secaling</div>
+            <div style="color:rgba(255,255,255,0.85); font-size:13px; margin-top:4px;">Keamanan Desa Segoropuro</div>
+          </td></tr>
+          <!-- Body -->
+          <tr><td style="padding:28px 24px 8px 24px;">
+            <h2 style="margin:0 0 12px 0; color:#0F1F18; font-size:20px; line-height:26px; font-weight:700;">Konfirmasi alamat email Anda</h2>
+            <p style="margin:0 0 16px 0; color:#2B3A32; font-size:15px; line-height:22px;">
+              Halo, terima kasih sudah daftar di <b>Secaling</b>. Ketuk tombol di bawah untuk mengonfirmasi email ini dan menyelesaikan pendaftaran.
+            </p>
+            <p style="margin:0 0 16px 0; color:#5A6B62; font-size:13px; line-height:19px;">
+              Email: <b style="color:#0F1F18;">{{ .Email }}</b>
+            </p>
+          </td></tr>
+          <!-- Button -->
+          <tr><td align="center" style="padding:8px 24px 0 24px;">
+            <a href="{{ .ConfirmationURL }}"
+               style="display:inline-block; background:#047857; color:#FFFFFF; text-decoration:none; font-weight:700; font-size:15px; padding:14px 28px; border-radius:999px; min-width:220px; text-align:center;">
+              Konfirmasi Email
+            </a>
+          </td></tr>
+          <!-- Hint -->
+          <tr><td style="padding:16px 24px 0 24px;">
+            <p style="margin:0; color:#5A6B62; font-size:13px; line-height:19px; text-align:center;">
+              Tombol tidak bisa diketuk? Buka Secaling di HP, lalu salin tautan ini ke browser HP yang sama:<br>
+              <span style="word-break:break-all; color:#047857; font-size:12px;">{{ .ConfirmationURL }}</span>
+            </p>
+          </td></tr>
+          <!-- Expired -->
+          <tr><td style="padding:16px 24px 24px 24px;">
+            <p style="margin:0; color:#8A9A92; font-size:12px; line-height:17px; text-align:center; border-top:1px solid #E6E9E6; padding-top:16px;">
+              Tautan berlaku <b>1 jam</b> dan hanya sekali pakai. Jika kadaluarsa, minta kirim ulang dari halaman Daftar di aplikasi.<br>
+              Abaikan email ini jika Anda tidak merasa mendaftar.
+            </p>
+          </td></tr>
+          <!-- Footer -->
+          <tr><td style="background:#F6F8F7; padding:14px 24px; text-align:center;">
+            <div style="color:#8A9A92; font-size:11px; line-height:15px;">Secaling — Desa Segoropuro • KKN UNIWARA Universitas PGRI Wiranegara</div>
+            <div style="color:#8A9A92; font-size:11px; line-height:15px; margin-top:2px;">by ridz & yuris • ilkom 23</div>
+          </td></tr>
+        </table>
+        <div style="color:#8A9A92; font-size:11px; margin-top:12px; max-width:560px;">Email ini dikirim otomatis. Jangan balas.</div>
+      </td></tr>
+    </table>
+  </body>
+</html>

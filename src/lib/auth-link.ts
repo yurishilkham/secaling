@@ -83,6 +83,10 @@ export type HasilTautan =
  *   membuat keduanya menerima hasil yang sama.
  */
 const sedangDiproses = new Map<string, Promise<HasilTautan>>();
+// Dedup tambahan berbasis token/code yang dinormalisasi — mengatasi kasus URL
+// BERBEDA tapi code sama (mis. satu bawa sb_flow_id, satu tidak). Tanpa ini
+// penukaran ganda tetap lolos karena kunci rawUrl berbeda.
+const tokenDiproses = new Map<string, Promise<HasilTautan>>();
 
 /**
  * Batas jumlah tautan yang diingat.
@@ -92,6 +96,20 @@ const sedangDiproses = new Map<string, Promise<HasilTautan>>();
  */
 const BATAS_INGATAN = 20;
 
+function kunciDedup(rawUrl: string): string | null {
+  try {
+    const frag = bacaFragment(rawUrl);
+    if (frag.access_token) return `frag:${frag.access_token.slice(0, 32)}`;
+    const parsed = Linking.parse(rawUrl);
+    const qp = parsed.queryParams ?? {};
+    const th = typeof qp.token_hash === 'string' ? qp.token_hash : null;
+    const code = typeof qp.code === 'string' ? qp.code : null;
+    if (th) return `th:${th.slice(0, 32)}`;
+    if (code) return `code:${code.slice(0, 32)}`;
+  } catch {}
+  return null;
+}
+
 export async function terapkanTautanAuth(rawUrl: string): Promise<HasilTautan> {
   const sudahAda = sedangDiproses.get(rawUrl);
   if (sudahAda) {
@@ -99,14 +117,28 @@ export async function terapkanTautanAuth(rawUrl: string): Promise<HasilTautan> {
     return sudahAda;
   }
 
+  const kToken = kunciDedup(rawUrl);
+  if (kToken) {
+    const sudahToken = tokenDiproses.get(kToken);
+    if (sudahToken) {
+      catat('token yang sama sudah diproses via URL berbeda, memakai hasil yang sama');
+      return sudahToken;
+    }
+  }
+
   const janji = prosesTautan(rawUrl);
   sedangDiproses.set(rawUrl, janji);
+  if (kToken) tokenDiproses.set(kToken, janji);
 
   // Buang ingatan tertua kalau sudah terlalu banyak. `Map` di JavaScript
   // mempertahankan urutan penyisipan, jadi kunci pertama adalah yang tertua.
   if (sedangDiproses.size > BATAS_INGATAN) {
     const tertua = sedangDiproses.keys().next();
     if (!tertua.done) sedangDiproses.delete(tertua.value);
+  }
+  if (tokenDiproses.size > BATAS_INGATAN) {
+    const tertua = tokenDiproses.keys().next();
+    if (!tertua.done) tokenDiproses.delete(tertua.value);
   }
 
   return janji;

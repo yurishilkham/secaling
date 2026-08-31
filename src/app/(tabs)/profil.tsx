@@ -280,6 +280,7 @@ export default function ProfilScreen() {
           dusun={profile.dusun}
           phone={profile.phone}
           role={profile.role}
+          jabatan={profile.jabatan}
         />
       </Animated.View>
 

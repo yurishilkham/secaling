@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
@@ -20,6 +21,7 @@ import { supabase } from '@/lib/supabase';
 export default function PengumumanScreen() {
   const { colors } = useAppTheme();
   const { profile } = useAuth();
+  const router = useRouter();
 
   const [items, setItems] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,6 +98,17 @@ export default function PengumumanScreen() {
           const old = payload.old as Announcement;
           if (!mounted.current || !old?.id) return;
           setItems((prev) => prev.filter((a) => a.id !== old.id));
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'announcements' },
+        (payload) => {
+          const row = payload.new as Announcement;
+          if (!mounted.current) return;
+          setItems((prev) =>
+            prev.map((a) => (a.id === row.id ? { ...a, ...row } : a)),
+          );
         },
       )
       .subscribe();
@@ -201,6 +214,7 @@ export default function PengumumanScreen() {
               entering={i < 5 ? FadeInDown.delay(60 + i * 45).duration(340) : undefined}>
               <AnnouncementCard
                 announcement={a}
+                onEdit={isAdmin ? () => router.push(`/admin/pengumuman/${a.id}` as never) : undefined}
                 onDelete={isAdmin ? () => setPendingDelete(a) : undefined}
                 deleting={deletingId === a.id}
               />

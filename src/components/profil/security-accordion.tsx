@@ -225,7 +225,7 @@ export function SecurityAccordion({
 
           <AppText variant="caption" color="textMuted">
             Setelah menekan tombol di atas, buka kotak masuk email baru Anda dan
-            ketuk tautan dari kami. Email lama masih berlaku sampai itu selesai.
+            ketuk tautan dari kami. Cukup 1 klik di email baru — langsung berganti.
           </AppText>
         </Animated.View>
       ) : null}

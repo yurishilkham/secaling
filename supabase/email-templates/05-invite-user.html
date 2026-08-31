@@ -1,0 +1,48 @@
+<!--
+  Subject: [Secaling] Anda diundang — Desa Segoropuro
+  Dashboard: Supabase > Auth > Email Templates > Invite User
+  Pola resmi: {{ .ConfirmationURL }} — link dibangun GoTrue sendiri, JANGAN rakit URL verify manual.
+  Kenapa: {{ .Token }} gak cocok dengan bentuk token tersimpan GoTrue, {{ .TokenHash }} ke-render kosong di flow klasik.
+  {{ .ConfirmationURL }} = https (Gmail aman) + redirect_to=secaling://auth/callback dari emailRedirectTo app → 303 langsung buka APK. JANGAN pakai {{ .RedirectTo }} di sini.
+  Invite dipakai admin untuk undang perangkat desa. Setelah klik, user set password.
+-->
+<!doctype html>
+<html lang="id">
+  <body style="margin:0; padding:0; background:#ECF2EE; font-family: -apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', 'Segoe UI', Roboto, sans-serif;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#ECF2EE; padding:24px 12px;">
+      <tr><td align="center">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px; background:#FFFFFF; border-radius:16px; overflow:hidden; border:1px solid #E6E9E6;">
+          <tr><td style="background:#047857; padding:20px 24px; text-align:center;">
+            <div style="color:#FFFFFF; font-size:20px; font-weight:800;">Secaling</div>
+            <div style="color:rgba(255,255,255,0.85); font-size:13px; margin-top:4px;">Undangan Perangkat Desa</div>
+          </td></tr>
+          <tr><td style="padding:28px 24px 8px 24px;">
+            <h2 style="margin:0 0 12px 0; color:#0F1F18; font-size:20px; font-weight:700;">Anda diundang ke Secaling</h2>
+            <p style="margin:0 0 16px 0; color:#2B3A32; font-size:15px; line-height:22px;">
+              Perangkat Desa Segoropuro mengundang Anda (<b>{{ .Email }}</b>) untuk bergabung sebagai pengelola Secaling.
+            </p>
+          </td></tr>
+          <tr><td align="center" style="padding:8px 24px 0 24px;">
+            <a href="{{ .ConfirmationURL }}"
+               style="display:inline-block; background:#047857; color:#FFFFFF; text-decoration:none; font-weight:700; font-size:15px; padding:14px 28px; border-radius:999px; min-width:220px; text-align:center;">
+              Terima Undangan
+            </a>
+          </td></tr>
+          <tr><td style="padding:16px 24px 0 24px;">
+            <p style="margin:0; color:#5A6B62; font-size:13px; text-align:center;">
+              Tautan: <span style="word-break:break-all; color:#047857; font-size:12px;">{{ .ConfirmationURL }}</span>
+            </p>
+          </td></tr>
+          <tr><td style="padding:16px 24px 24px 24px;">
+            <p style="margin:0; color:#8A9A92; font-size:12px; text-align:center; border-top:1px solid #E6E9E6; padding-top:16px;">
+              Tautan berlaku 24 jam. Setelah membuka, Anda akan diminta membuat kata sandi. Hubungi perangkat desa jika tidak merasa diundang.
+            </p>
+          </td></tr>
+          <tr><td style="background:#F6F8F7; padding:14px 24px; text-align:center;">
+            <div style="color:#8A9A92; font-size:11px;">Secaling — Desa Segoropuro</div>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>

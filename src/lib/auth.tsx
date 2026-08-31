@@ -11,6 +11,13 @@ export type Profile = {
   dusun: string;
   phone: string;
   role: 'warga' | 'admin';
+  /**
+   * Jabatan tampilan khusus role='admin':
+   *   'kepala_desa' | 'sekretaris_desa' | 'perangkat_desa' | null.
+   * TIDAK mengubah wewenang — semua role='admin' punya hak sama.
+   * Null dianggap 'perangkat_desa'.
+   */
+  jabatan: string | null;
   created_at: string;
 };
 

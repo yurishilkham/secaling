@@ -1,0 +1,57 @@
+<!--
+  Subject: [Secaling] Konfirmasi ganti email
+  Dashboard: Supabase > Auth > Email Templates > Change Email Address
+  Pola resmi: {{ .ConfirmationURL }} — link dibangun GoTrue sendiri, JANGAN rakit URL verify manual.
+  Kenapa: {{ .Token }} gak cocok dengan bentuk token tersimpan GoTrue, {{ .TokenHash }} ke-render kosong di flow klasik.
+  {{ .ConfirmationURL }} = https (Gmail aman) + redirect_to=secaling://auth/callback dari emailRedirectTo app → 303 langsung buka APK. JANGAN pakai {{ .RedirectTo }} di sini.
+  Mode 1-klik: Matikan "Secure email change" di Supabase Dashboard > Authentication > Configuration > Email
+  (toggle OFF). Maka cuma email BARU yang dapat tautan, cukup 1 klik. Kalau ON, akan kirim 2 email (lama+baru) dan butuh 2 klik.
+  src/hooks/use-auth-forms.ts:154 tetap kirim secaling://auth/callback, tapi link email lewat endpoint verify.
+-->
+<!doctype html>
+<html lang="id">
+  <body style="margin:0; padding:0; background:#ECF2EE; font-family: -apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', 'Segoe UI', Roboto, sans-serif;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#ECF2EE; padding:24px 12px;">
+      <tr><td align="center">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px; background:#FFFFFF; border-radius:16px; overflow:hidden; border:1px solid #E6E9E6;">
+          <tr><td style="background:#047857; padding:20px 24px; text-align:center;">
+            <div style="color:#FFFFFF; font-size:20px; font-weight:800;">Secaling</div>
+            <div style="color:rgba(255,255,255,0.85); font-size:13px; margin-top:4px;">Ganti Email</div>
+          </td></tr>
+          <tr><td style="padding:28px 24px 8px 24px;">
+            <h2 style="margin:0 0 12px 0; color:#0F1F18; font-size:20px; line-height:26px; font-weight:700;">Konfirmasi ganti email</h2>
+            <p style="margin:0 0 12px 0; color:#2B3A32; font-size:15px; line-height:22px;">
+              Ada permintaan untuk mengganti email akun Secaling Anda.
+            </p>
+            <p style="margin:0 0 16px 0; color:#5A6B62; font-size:13px; line-height:19px; background:#F6F8F7; padding:12px; border-radius:12px; border:1px solid #E6E9E6;">
+              Email baru: <b style="color:#0F1F18;">{{ .Email }}</b><br>
+              Cukup ketuk tautan di <b>email baru ini saja</b> — email langsung berganti (1 klik).
+            </p>
+          </td></tr>
+          <tr><td align="center" style="padding:8px 24px 0 24px;">
+            <a href="{{ .ConfirmationURL }}"
+               style="display:inline-block; background:#047857; color:#FFFFFF; text-decoration:none; font-weight:700; font-size:15px; padding:14px 28px; border-radius:999px; min-width:220px; text-align:center;">
+              Konfirmasi Ganti Email
+            </a>
+          </td></tr>
+          <tr><td style="padding:16px 24px 0 24px;">
+            <p style="margin:0; color:#5A6B62; font-size:13px; line-height:19px; text-align:center;">
+              Jika tombol tidak bisa: buka Secaling di HP lalu buka tautan ini di HP yang sama:<br>
+              <span style="word-break:break-all; color:#047857; font-size:12px;">{{ .ConfirmationURL }}</span>
+            </p>
+          </td></tr>
+          <tr><td style="padding:16px 24px 24px 24px;">
+            <p style="margin:0; color:#8A9A92; font-size:12px; line-height:17px; text-align:center; border-top:1px solid #E6E9E6; padding-top:16px;">
+              Tautan berlaku 1 jam, sekali pakai. Jika tidak merasa mengganti email, abaikan — email lama tetap aman.<br>
+              Tidak ada email? Cek folder spam di email baru.
+            </p>
+          </td></tr>
+          <tr><td style="background:#F6F8F7; padding:14px 24px; text-align:center;">
+            <div style="color:#8A9A92; font-size:11px;">Secaling — Desa Segoropuro</div>
+          </td></tr>
+        </table>
+        <div style="color:#8A9A92; font-size:11px; margin-top:12px; max-width:560px;">Jangan balas email ini.</div>
+      </td></tr>
+    </table>
+  </body>
+</html>

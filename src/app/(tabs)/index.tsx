@@ -140,6 +140,20 @@ export default function HomeScreen() {
             });
         },
       )
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'reports' }, (payload) => {
+        const row = payload.new as Report;
+        if (!mounted.current) return;
+        setReports((prev) => prev.map((r) => (r.id === row.id ? { ...r, ...row } : r)));
+      })
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'announcements' },
+        (payload) => {
+          const row = payload.new as Announcement;
+          if (!mounted.current) return;
+          setAnnouncements((prev) => prev.map((a) => (a.id === row.id ? { ...a, ...row } : a)));
+        },
+      )
       .subscribe();
 
     return () => {

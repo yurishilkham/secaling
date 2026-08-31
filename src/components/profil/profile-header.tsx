@@ -11,7 +11,21 @@ type Props = {
   dusun: string;
   phone: string;
   role: string;
+  /** Jabatan tampilan khusus role='admin'. Null = Perangkat Desa. */
+  jabatan?: string | null;
 };
+
+/** Label jabatan dari nilai kolom `profiles.jabatan`. */
+function labelJabatan(jabatan?: string | null): string {
+  switch (jabatan) {
+    case 'kepala_desa':
+      return 'Kepala Desa';
+    case 'sekretaris_desa':
+      return 'Sekretaris Desa';
+    default:
+      return 'Perangkat Desa';
+  }
+}
 
 /**
  * Kartu identitas warga.
@@ -31,10 +45,11 @@ type Props = {
  *   - Baris kosong jadi lebih berguna: "Dusun belum diisi" diganti kalimat yang
  *     menyebutkan apa yang bisa dilakukan.
  */
-export function ProfileHeaderCard({ name, dusun, phone, role }: Props) {
+export function ProfileHeaderCard({ name, dusun, phone, role, jabatan }: Props) {
   const { colors } = useAppTheme();
 
   const isAdmin = role === 'admin';
+  const isKepala = isAdmin && jabatan === 'kepala_desa';
   const trimmed = name.trim();
   const initial = trimmed ? trimmed.charAt(0).toUpperCase() : '?';
 
@@ -56,18 +71,28 @@ export function ProfileHeaderCard({ name, dusun, phone, role }: Props) {
             style={[
               styles.badge,
               {
-                backgroundColor: isAdmin ? colors.primarySoft : colors.background,
-                borderColor: isAdmin ? colors.borderStrong : colors.border,
+                backgroundColor: isKepala
+                  ? colors.warningSoft
+                  : isAdmin
+                    ? colors.primarySoft
+                    : colors.background,
+                borderColor: isKepala
+                  ? colors.warning
+                  : isAdmin
+                    ? colors.borderStrong
+                    : colors.border,
                 borderWidth: isAdmin ? 2 : 1.5,
               },
             ]}>
             <Ionicons
               name={isAdmin ? 'shield-checkmark' : 'person'}
               size={16}
-              color={isAdmin ? colors.primaryText : colors.textSecondary}
+              color={isKepala ? colors.warning : isAdmin ? colors.primaryText : colors.textSecondary}
             />
-            <AppText variant="badge" color={isAdmin ? 'primary' : 'textSecondary'}>
-              {isAdmin ? 'Perangkat Desa' : 'Warga'}
+            <AppText
+              variant="badge"
+              rawColor={isKepala ? colors.warning : isAdmin ? colors.primaryText : colors.textSecondary}>
+              {isAdmin ? labelJabatan(jabatan) : 'Warga'}
             </AppText>
           </View>
         </View>

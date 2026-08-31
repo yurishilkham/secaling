@@ -57,6 +57,7 @@ export type Database = {
           dusun: string;
           full_name: string;
           id: string;
+          jabatan: string | null;
           phone: string;
           role: string;
         };
@@ -65,6 +66,7 @@ export type Database = {
           dusun?: string;
           full_name?: string;
           id: string;
+          jabatan?: string | null;
           phone?: string;
           role?: string;
         };
@@ -73,6 +75,7 @@ export type Database = {
           dusun?: string;
           full_name?: string;
           id?: string;
+          jabatan?: string | null;
           phone?: string;
           role?: string;
         };

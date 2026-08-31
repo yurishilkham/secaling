@@ -43,8 +43,15 @@ function RootLayoutInner() {
   const segments = useSegments();
   const { resolved, colors, ready } = useAppTheme();
   const { sudahSelesai } = useOnboarding();
-  const { loading: updateLoading, needsUpdate, updateUrl, message, remoteVersion, localVersion } =
-    useMandatoryUpdate();
+  const {
+    loading: updateLoading,
+    needsUpdate,
+    updateUrl,
+    message,
+    remoteVersion,
+    localVersion,
+    retry: retryUpdate,
+  } = useMandatoryUpdate();
 
   /**
    * Font di-embed lewat plugin `expo-font` di app.json, jadi di HP sudah
@@ -86,27 +93,34 @@ function RootLayoutInner() {
   }, [resolved, colors]);
 
   const canShow = ready && sudahSelesai !== null && (iconsLoaded || !!iconsError);
-  // Tahan splash sampai cek wajib update selesai — Fase 1: updateLoading cepat,
-  // fail-open kalau tabel belum ada / offline, jadi nggak bikin splash lama.
-  const canHideSplash = canShow && !updateLoading;
-  useEffect(() => {
-    if (canHideSplash) SplashScreen.hideAsync().catch(() => {});
-  }, [canHideSplash]);
 
-  // Splash buatan — 2 logo + versi + KKN + by (bisa OTA, nggak perlu build).
-  // Native splash cuma 1 gambar, jadi yang lengkap ditampilkan di sini 1.6 detik
-  // setelah JS siap. Nggak nutupin gate wajib update di bawah.
-  const [splashDone, setSplashDone] = useState(false);
+  // Opsi B single splash JS-only 1400ms — native hijau cepat:
+  // Native (hijau #047857) ditahan cuma sampai `canShow` (font + onboarding ready),
+  // TIDAK nunggu `updateLoading`. Jadi HP langsung hijau → JS splash hijau 1400ms
+  // mulus tanpa double flash. Gate wajib update tetap fail-open di belakang.
+  const canHideNative = canShow;
   useEffect(() => {
-    if (!canHideSplash || needsUpdate) return;
-    const t = setTimeout(() => setSplashDone(true), 1600);
+    if (canHideNative) SplashScreen.hideAsync().catch(() => {});
+  }, [canHideNative]);
+
+  // JS splash 1400ms — satu-satunya branding yang warga lihat (bisa OTA).
+  // Native hijau cepet: hide pas `canShow`, JS hijau 1400ms nutupin loading gate.
+  // Gate tetap tunggu `updateLoading` — kalau belum selesai, JS tetap hijau (nggak
+  // flash ke Beranda dulu baru ke-block).
+  const [timerDone, setTimerDone] = useState(false);
+  useEffect(() => {
+    if (!canShow || needsUpdate) return;
+    const t = setTimeout(() => setTimerDone(true), 1400);
     return () => clearTimeout(t);
-  }, [canHideSplash, needsUpdate]);
+  }, [canShow, needsUpdate]);
 
-  if (!canShow || updateLoading) return null;
+  // JS selesai kalau timer 1400 sudah + gate sudah jawab (fail-open max 4s)
+  const splashDone = timerDone && !updateLoading;
+
+  if (!canShow) return null;
 
   // Hard-block — cuma muncul kalau force_update=true + versionCode kadaluarsa.
-  // Prioritas di atas splash buatan, jadi kalau wajib update langsung blok tanpa nunggu 1.6s.
+  // Prioritas di atas splash JS, jadi kalau wajib update langsung blok tanpa nunggu 1400ms.
   if (needsUpdate) {
     return (
       <ThemeProvider value={navTheme}>
@@ -115,13 +129,14 @@ function RootLayoutInner() {
           message={message}
           remoteVersion={remoteVersion}
           localVersion={localVersion}
+          onRetry={retryUpdate}
         />
         <StatusBar style={resolved === 'dark' ? 'light' : 'dark'} />
       </ThemeProvider>
     );
   }
 
-  // Splash buatan — ganti native yang cuma 1 logo
+  // Single splash JS 1400ms — hijau Secaling (native hijau #047857 → JS hijau mulus)
   if (!splashDone) {
     return (
       <ThemeProvider value={navTheme}>
@@ -167,6 +182,7 @@ function RootLayoutInner() {
           <Stack.Screen name="auth/callback" options={{ animation: 'fade' }} />
           <Stack.Screen name="admin/index" />
           <Stack.Screen name="admin/pengumuman-baru" />
+          <Stack.Screen name="admin/pengumuman/[id]" />
           <Stack.Screen name="admin/pengaturan" />
           <Stack.Screen name="+not-found" />
         </Stack>

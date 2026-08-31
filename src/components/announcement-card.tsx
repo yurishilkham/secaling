@@ -22,10 +22,12 @@ export type Announcement = {
 export function AnnouncementCard({
   announcement,
   onDelete,
+  onEdit,
   deleting,
 }: {
   announcement: Announcement;
   onDelete?: () => void;
+  onEdit?: () => void;
   deleting?: boolean;
 }) {
   const { colors } = useAppTheme();
@@ -79,6 +81,14 @@ export function AnnouncementCard({
           </AppText>
         </View>
 
+        {onEdit ? (
+          <IconButton
+            icon="create-outline"
+            label={`Ubah pengumuman ${announcement.title}`}
+            tone="primary"
+            onPress={onEdit}
+          />
+        ) : null}
         {onDelete ? (
           deleting ? (
             <View style={styles.deleteSlot}>

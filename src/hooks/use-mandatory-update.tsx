@@ -4,13 +4,17 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { supabase } from '@/lib/supabase';
 
 /**
- * Gerbang wajib update — Fase 1 (mati).
+ * Gerbang wajib update — Fase 1.
  *
- * Membaca `app_config` id=1 (force_update, minimum_version_code, update_url).
+ * Membaca `app_config` id=1 (force_update, minimum_version_code, update_url, message).
  * Kalau tabel belum ada / fetch gagal / offline → **fail-open** (nggak keblok).
  * Di Expo Go juga di-skip karena versionCode-nya bukan punya Secaling.
  *
- * Saklar remote: `force_update=false` sekarang, nanti jadi true pas splash ok + APK 1.1.0.
+ * Saklar remote di Supabase: `force_update` + `minimum_version_code` + `update_url`
+ * (Drive). Versi/next URL diatur pemilik via dashboard — kode di sini cuma gate-nya.
+ *
+ * Cache: disimpan di AsyncStorage dengan TTL 24 jam supaya rollback `force_update`
+ * tidak kekunci selamanya di HP offline. Lewat TTL dianggap kadaluarsa → fail-open.
  */
 
 type RemoteConfig = {
@@ -33,9 +37,12 @@ type State = {
 };
 
 const CACHE_KEY = '@secaling/app_config_cache';
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 jam — lewat ini cache dianggap kadaluarsa (rollback aman)
 const DEFAULT_URL = 'https://github.com/yurishilkham/secaling/releases';
 const DEFAULT_MESSAGE =
   'Versi Secaling di HP Anda sudah kadaluarsa. Perbarui untuk tetap mendapat info keamanan desa.';
+
+type CachedConfig = RemoteConfig & { _savedAt: number };
 
 const Ctx = createContext<State>({
   loading: true,
@@ -54,7 +61,7 @@ function getLocalVersion() {
   const version: string = cfg.version ?? cfg.android?.version ?? '1.0.0';
   // versionCode ada di Constants.expoConfig.android.versionCode (number) atau via expo-application
   let build: string | number | undefined = cfg.android?.versionCode ?? cfg.androidVersionCode;
-  // fallback via expo-application kalau ada (nativeBuildVersion string "2" di Android)
+  // fallback via expo-application kalau ada (nativeBuildVersion string "3" di Android)
   if (build == null) {
     try {
       // dynamic supaya tidak crash kalau modul belum ter-link di Expo Go lama
@@ -64,7 +71,9 @@ function getLocalVersion() {
       if (v) build = v;
     } catch {}
   }
-  const buildStr = build != null ? String(build) : '2';
+  // Kalau tetap tidak ketemu, kembalikan '0' supaya `localCode > 0` gagal dan gate fail-open
+  // (mencegah false-positive nge-blok APK baru karena parsing gagal).
+  const buildStr = build != null ? String(build) : '0';
   const verStr = String(version);
   return { verStr, buildStr };
 }
@@ -155,12 +164,23 @@ export function MandatoryUpdateProvider({ children }: { children: React.ReactNod
       let cached: RemoteConfig | null = null;
       try {
         const raw = await AsyncStorage.getItem(CACHE_KEY);
-        if (raw) cached = JSON.parse(raw);
+        if (raw) {
+          const parsed = JSON.parse(raw) as CachedConfig | RemoteConfig;
+          // Dukung cache lama tanpa _savedAt sekaligus TTL baru
+          const savedAt = (parsed as CachedConfig)._savedAt;
+          if (savedAt && Date.now() - savedAt > CACHE_TTL_MS) {
+            // Cache kadaluarsa → anggap tidak ada (rollback aman, fail-open)
+            await AsyncStorage.removeItem(CACHE_KEY).catch(() => {});
+            cached = null;
+          } else {
+            cached = parsed as RemoteConfig;
+          }
+        }
       } catch {}
 
       const remote = await fetchRemote();
 
-      // fail-open: kalau fetch gagal dan nggak ada cache → jangan blok
+      // fail-open: kalau fetch gagal dan nggak ada cache valid → jangan blok
       const effective = remote ?? cached;
       if (!effective) {
         if (!cancelled) {
@@ -178,10 +198,11 @@ export function MandatoryUpdateProvider({ children }: { children: React.ReactNod
         return;
       }
 
-      // simpan cache kalau dapat fresh
+      // simpan cache kalau dapat fresh (sertakan timestamp)
       if (remote) {
         try {
-          await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(remote));
+          const toSave: CachedConfig = { ...remote, _savedAt: Date.now() };
+          await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(toSave));
         } catch {}
       }
 

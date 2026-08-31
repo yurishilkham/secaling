@@ -47,7 +47,20 @@ Scan QR dengan aplikasi **Expo Go** (Android/iOS).
 Role admin diatur di tabel `profiles` (bukan dari aplikasi), misalnya di dashboard Supabase:
 
 ```sql
-update public.profiles set role = 'admin' where email = 'email-pengguna' -- lewat join auth.users
+update public.profiles
+set role = 'admin'
+where id = (select id from auth.users where email = 'email-pengguna');
+```
+
+**Jabatan (tampilan saja, wewenang sama).** Kolom `profiles.jabatan` mengatur
+lencana di Profil: `kepala_desa`, `sekretaris_desa`, atau `perangkat_desa`
+(NULL = Perangkat Desa). Role tetap `admin` untuk semua:
+
+```sql
+-- Contoh: King Mus sebagai Kepala Desa
+update public.profiles
+set jabatan = 'kepala_desa'
+where id = (select id from auth.users where email = 'kingmus362@gmail.com');
 ```
 
 Setelah itu pengguna tersebut mendapat menu "Tulis Pengumuman Desa".

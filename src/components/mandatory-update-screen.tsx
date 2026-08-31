@@ -16,16 +16,23 @@ type Props = {
   message: string;
   remoteVersion?: string;
   localVersion?: string;
+  onRetry?: () => void;
 };
 
 /**
  * Layar wajib update — hard-block.
  *
- * Nggak ada tombol tutup, nggak bisa back, cuma 1 tombol ke web.
+ * Nggak ada tombol tutup, nggak bisa back. Ada tombol utama buka Drive
+ * dan tombol kedua "Coba Lagi" untuk cek gate ulang tanpa restart.
  * Cuma muncul kalau `needsUpdate===true` (force_update=true + versionCode kadaluarsa).
- * Fase 1: force_update=false → komponen ini nggak pernah dirender.
  */
-export function MandatoryUpdateScreen({ updateUrl, message, remoteVersion, localVersion }: Props) {
+export function MandatoryUpdateScreen({
+  updateUrl,
+  message,
+  remoteVersion,
+  localVersion,
+  onRetry,
+}: Props) {
   const { colors } = useAppTheme();
   const [err, setErr] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
@@ -78,6 +85,14 @@ export function MandatoryUpdateScreen({ updateUrl, message, remoteVersion, local
           loading={opening}
           icon={<Ionicons name="open-outline" size={22} color={colors.onPrimary} />}
         />
+        {onRetry ? (
+          <Button
+            title="Coba Lagi"
+            variant="outline"
+            onPress={onRetry}
+            icon={<Ionicons name="refresh" size={22} color={colors.primaryText} />}
+          />
+        ) : null}
         <AppText variant="caption" color="textMuted" align="center">
           Setelah mengunduh, pasang APK-nya lalu buka kembali Secaling.
         </AppText>
